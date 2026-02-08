@@ -2,6 +2,7 @@ import flet as ft
 import logging
 import os
 import threading
+import time
 from datetime import datetime
 from engine import MeshEngine
 
@@ -192,6 +193,8 @@ def main(page: ft.Page):
                 msg = f"\a⚠️ WX ALERT: {alert['event']} - {alert['severity']}\n{alert['headline']}"
                 logging.info(f"Broadcasting Alert: {alert['event']}")
                 engine.send_broadcast(msg, channel_index=int(alert_channel.value))
+                # 7-second cooldown between multiple alerts to prevent packet loss
+                time.sleep(7)
         
         threading.Timer(600, check_alerts).start()
 
