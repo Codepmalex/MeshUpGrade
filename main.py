@@ -230,12 +230,23 @@ def main(page: ft.Page):
     # UI Components
     status_text = ft.Text("Status: Disconnected")
     ip_address = ft.TextField(label="IP Address", value=settings.get("ip", "192.168.1.50"), width=200)
+    serial_port = ft.TextField(label="Serial Port (Auto or /dev/...) ", value=settings.get("serial_port", ""), width=200)
     
     def connect_tcp_click(e):
         success = engine.connect_tcp(ip_address.value)
-        status_text.value = f"Status: {'Connected' if success else 'Failed'}"
+        status_text.value = f"Status: {'Connected (TCP)' if success else 'Failed'}"
         if success:
             settings["ip"] = ip_address.value
+            save_settings(settings)
+            update_channels_list()
+        page.update()
+
+    def connect_serial_click(e):
+        port = serial_port.value.strip() if serial_port.value.strip() else None
+        success = engine.connect_serial(port)
+        status_text.value = f"Status: {'Connected (Serial)' if success else 'Failed'}"
+        if success:
+            settings["serial_port"] = serial_port.value
             save_settings(settings)
             update_channels_list()
         page.update()
@@ -247,6 +258,7 @@ def main(page: ft.Page):
             "unit": unit_picker.value,
             "use_gps": use_node_gps.value,
             "ip": ip_address.value,
+            "serial_port": serial_port.value,
             "use_alerts": use_alerts.value,
             "alert_channel": int(alert_channel.value),
             "use_signal_test": use_signal_test.value,
@@ -265,7 +277,12 @@ def main(page: ft.Page):
     def show_connection(e):
         content_area.controls = [
             ft.Text("Connection", size=20),
-            ft.Row([ip_address, ft.ElevatedButton("Connect", on_click=connect_tcp_click)]),
+            ft.Text("WiFi / TCP:", size=16, weight="bold"),
+            ft.Row([ip_address, ft.ElevatedButton("Connect TCP", on_click=connect_tcp_click)]),
+            ft.Divider(),
+            ft.Text("USB / Serial:", size=16, weight="bold"),
+            ft.Row([serial_port, ft.ElevatedButton("Connect Serial", on_click=connect_serial_click)]),
+            ft.Divider(),
             status_text,
             ft.Divider(),
             ft.Text("Command Routing", size=18),

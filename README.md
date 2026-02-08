@@ -1,4 +1,4 @@
-# MeshUpGrade v0.1
+# MeshUpGrade v0.1.1
 
 # READ THIS BEFORE READING THE REST!!!!!!!!!
 Human here, TLDR I basically vibe coded the shittt out of this so I don't knwo if thats against the rules here (Take it down if it is ill be happy vibing lol) or whatever but I'm too lazy to write code or even a proper readme so please bear with me. 
