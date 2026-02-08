@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+build/
+dist/
+
+# Meshtastic / App
+settings.json
+*.log
+
+# OS
+.DS_Store

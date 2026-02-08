@@ -1,0 +1,5 @@
+meshtastic>=2.5.0
+flet>=0.8.0
+requests>=2.31.0
+pyyaml>=6.0.1
+pubsub>=1.0.0
