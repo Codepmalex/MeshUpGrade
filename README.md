@@ -1,4 +1,4 @@
-# MeshUpGrade v0.1.1
+# MeshUpGrade v0.1.3
 
 # READ THIS BEFORE READING THE REST!!!!!!!!!
 Human here, TLDR I basically vibe coded the shittt out of this so I don't knwo if thats against the rules here (Take it down if it is ill be happy vibing lol) or whatever but I'm too lazy to write code or even a proper readme so please bear with me. 
@@ -22,6 +22,7 @@ MeshUpGrade is a modern, cross-platform GUI and plugin engine for Meshtastic nod
 - 🔄 **Channel Command Routing**: Process mesh-wide broadcasts on a specific channel as if they were DMs.
 - 🔒 **Security**: Built-in 200-character enforcement for all outgoing mesh messages.
 - 💾 **Persistence**: Automatically saves your settings, IP addresses, and preferences.
+- 🏷️ **Node Status Sync**: Automatically change your node's short name to **ON** when the app is running and **OFF** when it closes (Toggleable).
 
 ## 🚀 Getting Started
 

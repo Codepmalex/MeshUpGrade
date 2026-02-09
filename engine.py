@@ -90,6 +90,17 @@ class MeshEngine:
             logging.error(f"Failed to send broadcast: {e}")
             return False
 
+    def set_short_name(self, short_name):
+        if not self.interface or not self.interface.localNode:
+            return False
+        try:
+            logging.info(f"Setting node short name to: {short_name}")
+            self.interface.localNode.setOwner(short_name=short_name)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to set short name: {e}")
+            return False
+
     def close(self):
         if self.interface:
             try:

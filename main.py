@@ -59,6 +59,7 @@ def main(page: ft.Page):
         width=200
     )
     use_node_gps = ft.Switch(label="Use Sender's Node GPS (if available)", value=settings.get("use_gps", True))
+    sync_shortname = ft.Switch(label="Sync Node Shortname with Status (ON/OFF)", value=settings.get("sync_shortname", False))
 
     def get_location(sender_id):
         if use_node_gps.value and engine.interface:
@@ -242,6 +243,8 @@ def main(page: ft.Page):
             settings["ip"] = ip_address.value
             save_settings(settings)
             update_channels_list()
+            if sync_shortname.value:
+                engine.set_short_name("ON")
         page.update()
 
     def connect_serial_click(e):
@@ -252,6 +255,8 @@ def main(page: ft.Page):
             settings["serial_port"] = serial_port.value
             save_settings(settings)
             update_channels_list()
+            if sync_shortname.value:
+                engine.set_short_name("ON")
         page.update()
 
     def update_settings_click(e):
@@ -260,6 +265,7 @@ def main(page: ft.Page):
             "lon": lon_field.value,
             "unit": unit_picker.value,
             "use_gps": use_node_gps.value,
+            "sync_shortname": sync_shortname.value,
             "ip": ip_address.value,
             "serial_port": serial_port.value,
             "use_alerts": use_alerts.value,
@@ -294,8 +300,12 @@ def main(page: ft.Page):
             ft.Divider(),
             ft.Text("Features", size=18),
             use_signal_test,
+            sync_shortname,
             ft.Divider(),
-            ft.ElevatedButton("Save Settings", on_click=update_settings_click),
+            ft.Row([
+                ft.ElevatedButton("Save Settings", on_click=update_settings_click),
+                ft.ElevatedButton("End Program & Logout", on_click=lambda _: shutdown_app(), color="red"),
+            ]),
         ]
         page.update()
 
@@ -330,9 +340,18 @@ def main(page: ft.Page):
         ft.ElevatedButton("Terminal", on_click=show_terminal),
     ])
 
+    def shutdown_app():
+        logging.info("Shutting down MeshUpGrade...")
+        if sync_shortname.value and engine.is_connected:
+            logging.info("Updating short name to OFF before logout...")
+            engine.set_short_name("OFF")
+            time.sleep(2) # Give it a moment to send the packet
+        engine.close()
+        page.window_destroy()
+
     show_connection(None)
     page.add(nav_row, ft.Divider(), content_area)
-    page.on_close = lambda _: engine.close()
+    page.on_close = shutdown_app
 
 if __name__ == "__main__":
     ft.app(target=main)
