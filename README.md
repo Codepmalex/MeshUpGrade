@@ -35,7 +35,7 @@ MeshUpGrade is a (not so) modern, cross-platform GUI and plugin engine for Mesht
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/MeshUpGrade.git
+   git clone https://github.com/Codepmalex/MeshUpGrade.git
    cd MeshUpGrade
    ```
 
