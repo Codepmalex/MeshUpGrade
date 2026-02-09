@@ -1,6 +1,7 @@
 import flet as ft
 import logging
 import os
+import sys
 import threading
 import time
 from datetime import datetime
@@ -60,6 +61,7 @@ def main(page: ft.Page):
     )
     use_node_gps = ft.Switch(label="Use Sender's Node GPS (if available)", value=settings.get("use_gps", True))
     sync_shortname = ft.Switch(label="Sync Node Shortname with Status (ON/OFF)", value=settings.get("sync_shortname", False))
+    sync_ping = ft.Switch(label="Broadcast Node Info after Status Change", value=settings.get("sync_ping", False))
 
     def get_location(sender_id):
         if use_node_gps.value and engine.interface:
@@ -236,6 +238,43 @@ def main(page: ft.Page):
     ip_address = ft.TextField(label="IP Address", value=settings.get("ip", "192.168.1.50"), width=200)
     serial_port = ft.TextField(label="Serial Port (Auto or /dev/...) ", value=settings.get("serial_port", ""), width=200)
     
+    def reboot_recovery_task(short_name):
+        # 1-second settle time as requested
+        logging.info(f"Interface settle window (1s) before {short_name} command...")
+        time.sleep(1)
+        
+        if not engine.set_short_name(short_name):
+            logging.error(f"Failed to set short name to {short_name}")
+            return
+
+        logging.info(f"Node rebooting for name change to {short_name}. Waiting 40s...")
+        status_text.value = f"Status: Rebooting to {short_name} (40s)..."
+        page.update()
+        
+        time.sleep(40)
+        
+        logging.info("Attempting to reconnect after reboot...")
+        status_text.value = "Status: Reconnecting..."
+        page.update()
+        
+        if engine.reconnect():
+            logging.info("Reconnected successfully. Sending node info broadcast.")
+            engine.send_node_info(short_name=short_name)
+            status_text.value = f"Status: Connected ({engine.last_conn_type.upper()}) - Sync OK"
+        else:
+            logging.warning(f"Initial reconnect failed. Searching network for '{short_name}'...")
+            status_text.value = f"Status: Searching network for {short_name}..."
+            page.update()
+            
+            if engine.discover_node(short_name):
+                logging.info(f"Node found and reconnected via Discovery! Sending info broadcast.")
+                engine.send_node_info(short_name=short_name)
+                status_text.value = f"Status: Connected (ADAPTIVE) - Sync OK"
+            else:
+                logging.error("Discovery failed. Node not found on subnet.")
+                status_text.value = "Status: Reconnect Failed (Not Found)"
+        page.update()
+
     def connect_tcp_click(e):
         success = engine.connect_tcp(ip_address.value)
         status_text.value = f"Status: {'Connected (TCP)' if success else 'Failed'}"
@@ -244,7 +283,7 @@ def main(page: ft.Page):
             save_settings(settings)
             update_channels_list()
             if sync_shortname.value:
-                engine.set_short_name("ON")
+                threading.Thread(target=reboot_recovery_task, args=("ON",), daemon=True).start()
         page.update()
 
     def connect_serial_click(e):
@@ -256,7 +295,7 @@ def main(page: ft.Page):
             save_settings(settings)
             update_channels_list()
             if sync_shortname.value:
-                engine.set_short_name("ON")
+                threading.Thread(target=reboot_recovery_task, args=("ON",), daemon=True).start()
         page.update()
 
     def update_settings_click(e):
@@ -266,6 +305,7 @@ def main(page: ft.Page):
             "unit": unit_picker.value,
             "use_gps": use_node_gps.value,
             "sync_shortname": sync_shortname.value,
+            "sync_ping": sync_ping.value,
             "ip": ip_address.value,
             "serial_port": serial_port.value,
             "use_alerts": use_alerts.value,
@@ -281,12 +321,13 @@ def main(page: ft.Page):
     use_signal_test = ft.Switch(label="Signal Test (Auto-reply SNR/RSSI)", value=settings.get("use_signal_test", True))
 
     # View Switcher
-    content_area = ft.Column(expand=True)
+    content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
     def show_connection(e):
         content_area.controls = [
             ft.Text("Connection", size=20),
             ft.Text("WiFi / TCP:", size=16, weight="bold"),
+            ft.Text("Tip: Use 'node-name.local' to survive IP changes.", size=12, italic=True),
             ft.Row([ip_address, ft.ElevatedButton("Connect TCP", on_click=connect_tcp_click)]),
             ft.Divider(),
             ft.Text("USB / Serial:", size=16, weight="bold"),
@@ -301,6 +342,7 @@ def main(page: ft.Page):
             ft.Text("Features", size=18),
             use_signal_test,
             sync_shortname,
+            sync_ping,
             ft.Divider(),
             ft.Row([
                 ft.ElevatedButton("Save Settings", on_click=update_settings_click),
@@ -344,10 +386,36 @@ def main(page: ft.Page):
         logging.info("Shutting down MeshUpGrade...")
         if sync_shortname.value and engine.is_connected:
             logging.info("Updating short name to OFF before logout...")
+            status_text.value = "Status: Setting OFF & Rebooting..."
+            page.update()
+            
+            # Use a slightly longer settle before shutdown command
+            time.sleep(1)
             engine.set_short_name("OFF")
-            time.sleep(2) # Give it a moment to send the packet
+            
+            if sync_ping.value:
+                logging.info("Waiting 40s for node reboot before final broadcast...")
+                time.sleep(40)
+                if not engine.reconnect():
+                    logging.info("IP may have changed. Attempting discovery for final broadcast...")
+                    engine.discover_node("OFF")
+                
+                # If either worked, send info
+                if engine.is_connected:
+                    engine.send_node_info(short_name="OFF")
+                time.sleep(2) # Final buffer
+        
         engine.close()
-        page.window_destroy()
+        # Close page and exit process
+        try:
+            if hasattr(page, "window_close"):
+                page.window_close()
+            elif hasattr(page, "close"):
+                page.close()
+        except:
+            pass
+        # Hard exit to avoid asyncio cleanup tracebacks
+        os._exit(0)
 
     show_connection(None)
     page.add(nav_row, ft.Divider(), content_area)
