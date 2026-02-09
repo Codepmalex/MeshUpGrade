@@ -9,7 +9,7 @@ Lastly I know Meshtastic has a bit of a stringe licencing thing so please if I'm
 Oh and by the way this is BETABETABETA its SO BETA so please expect the worst.
 
 ## Description
-MeshUpGrade is a modern, cross-platform GUI and plugin engine for Meshtastic nodes. It allows users to monitor their mesh network, configure weather alerts, and provide automated services (like weather forecasts and signal testing) to other nodes via DMs and specific channels.
+MeshUpGrade is a (not so) modern, cross-platform GUI and plugin engine for Meshtastic nodes. It allows users to monitor their mesh network, configure weather alerts, and provide automated services (like weather forecasts and signal testing) to other nodes via DMs and specific channels.
 
 ## ✨ Features
 
