@@ -238,22 +238,36 @@ def main(page: ft.Page):
     ip_address = ft.TextField(label="IP Address", value=settings.get("ip", "192.168.1.50"), width=200)
     serial_port = ft.TextField(label="Serial Port (Auto or /dev/...) ", value=settings.get("serial_port", ""), width=200)
     
-    def reboot_recovery_task(short_name):
-        # 1-second settle time as requested
-        logging.info(f"Interface settle window (1s) before {short_name} command...")
-        time.sleep(1)
+    def reboot_recovery_task(short_name, was_planned=True):
+        engine.last_short_name = short_name
         
-        if not engine.set_short_name(short_name):
-            logging.error(f"Failed to set short name to {short_name}")
-            return
+        if was_planned:
+            # Check if name already matches
+            try:
+                current_name = engine.interface.getShortName()
+                if current_name == short_name:
+                    logging.info(f"Node already named {short_name}. Skipping reboot.")
+                    status_text.value = f"Status: Connected ({engine.last_conn_type.upper()}) - Already Optimized"
+                    page.update()
+                    return
+            except:
+                pass
 
-        logging.info(f"Node rebooting for name change to {short_name}. Waiting 40s...")
-        status_text.value = f"Status: Rebooting to {short_name} (40s)..."
-        page.update()
+            # 1-second settle time as requested
+            logging.info(f"Interface settle window (1s) before {short_name} command...")
+            time.sleep(1)
+            
+            if not engine.set_short_name(short_name):
+                logging.error(f"Failed to set short name to {short_name}")
+                return
+
+            logging.info(f"Node rebooting for name change to {short_name}. Waiting 40s...")
+            status_text.value = f"Status: Rebooting to {short_name} (40s)..."
+            page.update()
+            
+            time.sleep(40)
         
-        time.sleep(40)
-        
-        logging.info("Attempting to reconnect after reboot...")
+        logging.info("Attempting to reconnect...")
         status_text.value = "Status: Reconnecting..."
         page.update()
         
@@ -283,7 +297,7 @@ def main(page: ft.Page):
             save_settings(settings)
             update_channels_list()
             if sync_shortname.value:
-                threading.Thread(target=reboot_recovery_task, args=("ON",), daemon=True).start()
+                threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
         page.update()
 
     def connect_serial_click(e):
@@ -295,7 +309,7 @@ def main(page: ft.Page):
             save_settings(settings)
             update_channels_list()
             if sync_shortname.value:
-                threading.Thread(target=reboot_recovery_task, args=("ON",), daemon=True).start()
+                threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
         page.update()
 
     def update_settings_click(e):
@@ -384,38 +398,75 @@ def main(page: ft.Page):
 
     def shutdown_app():
         logging.info("Shutting down MeshUpGrade...")
-        if sync_shortname.value and engine.is_connected:
-            logging.info("Updating short name to OFF before logout...")
-            status_text.value = "Status: Setting OFF & Rebooting..."
-            page.update()
-            
-            # Use a slightly longer settle before shutdown command
-            time.sleep(1)
-            engine.set_short_name("OFF")
-            
-            if sync_ping.value:
-                logging.info("Waiting 40s for node reboot before final broadcast...")
-                time.sleep(40)
-                if not engine.reconnect():
-                    logging.info("IP may have changed. Attempting discovery for final broadcast...")
-                    engine.discover_node("OFF")
-                
-                # If either worked, send info
-                if engine.is_connected:
-                    engine.send_node_info(short_name="OFF")
-                time.sleep(2) # Final buffer
         
-        engine.close()
-        # Close page and exit process
-        try:
-            if hasattr(page, "window_close"):
-                page.window_close()
-            elif hasattr(page, "close"):
-                page.close()
-        except:
-            pass
-        # Hard exit to avoid asyncio cleanup tracebacks
-        os._exit(0)
+        # Show a non-closable dialog to prevent further interaction
+        shutdown_dialog = ft.AlertDialog(
+            title=ft.Text("Shutting Down"),
+            content=ft.Text("Performing final mesh sync (OFF status)...\nThis may take up to 45 seconds."),
+            modal=True
+        )
+        page.dialog = shutdown_dialog
+        shutdown_dialog.open = True
+        page.update()
+
+        def perform_shutdown_sync():
+            try:
+                if sync_shortname.value and engine.is_connected:
+                    # Smart Sync check
+                    try:
+                        if engine.interface.getShortName() == "OFF":
+                            logging.info("Node already named OFF. Skipping final reboot sync.")
+                            engine.close()
+                            os._exit(0)
+                    except:
+                        pass
+                        
+                    logging.info("Updating short name to OFF before logout...")
+                    # Settle before command
+                    time.sleep(1)
+                    engine.set_short_name("OFF")
+                    
+                    if sync_ping.value:
+                        logging.info("Waiting 40s for node reboot before final broadcast...")
+                        # 40s wait while node reboots
+                        time.sleep(40)
+                        
+                        if not engine.reconnect():
+                            logging.info("IP may have changed. Attempting discovery for final broadcast...")
+                            engine.discover_node("OFF")
+                        
+                        if engine.is_connected:
+                            engine.send_node_info(short_name="OFF")
+                        time.sleep(2) # Final buffer
+                
+                engine.close()
+            except Exception as e:
+                logging.debug(f"Shutdown sync error (suppressed): {e}")
+            finally:
+                # Hard exit
+                os._exit(0)
+
+        # Start shutdown sync in a background daemon thread
+        threading.Thread(target=perform_shutdown_sync, daemon=True).start()
+
+    def connection_watchdog():
+        """Monitors connection and auto-reconnects if peer resets."""
+        while True:
+            time.sleep(30)
+            # Only trigger if we WERE connected before (params exist) but aren't now
+            if engine.last_conn_params and not engine.is_connected:
+                # Avoid triggering if we are already in the middle of a recovery
+                if status_text.value and "Rebooting" in status_text.value:
+                    continue
+                    
+                logging.warning("Connection watchdog detected unexpected drop. Triggering recovery...")
+                target_name = engine.last_short_name if engine.last_short_name else "ON"
+                
+                # For watchdog drops, skip the initial name-change wait (was_planned=False)
+                threading.Thread(target=reboot_recovery_task, args=(target_name, False), daemon=True).start()
+
+    # Start the watchdog
+    threading.Thread(target=connection_watchdog, daemon=True).start()
 
     show_connection(None)
     page.add(nav_row, ft.Divider(), content_area)

@@ -12,10 +12,19 @@ class MeshEngine:
     def __init__(self, callback_on_message=None):
         self.interface = None
         self.callback_on_message = callback_on_message
-        self.is_connected = False
+        self.last_short_name = None
         self.last_info_broadcast_time = 0
         self.last_conn_type = None  # 'tcp' or 'serial'
         self.last_conn_params = None
+
+    @property
+    def is_connected(self):
+        if not self.interface:
+            return False
+        # The library uses .noProto to indicate the protocol/reader is dead
+        if hasattr(self.interface, 'noProto') and self.interface.noProto:
+            return False
+        return True
 
     def connect_tcp(self, hostname):
         try:
@@ -24,11 +33,9 @@ class MeshEngine:
             logging.info(f"Connecting to TCP: {hostname}")
             self.interface = meshtastic.tcp_interface.TCPInterface(hostname)
             self._setup_listeners()
-            self.is_connected = True
             return True
         except Exception as e:
             logging.error(f"TCP Connection failed: {e}")
-            self.is_connected = False
             return False
 
     def connect_serial(self, dev_path=None):
@@ -38,11 +45,9 @@ class MeshEngine:
             logging.info(f"Connecting to Serial: {dev_path if dev_path else 'Auto'}")
             self.interface = meshtastic.serial_interface.SerialInterface(devPath=dev_path)
             self._setup_listeners()
-            self.is_connected = True
             return True
         except Exception as e:
             logging.error(f"Serial Connection failed: {e}")
-            self.is_connected = False
             return False
 
     def reconnect(self):
@@ -173,6 +178,7 @@ class MeshEngine:
             return False
         try:
             logging.info(f"Setting node short name to: {short_name}")
+            self.last_short_name = short_name
             self.interface.localNode.setOwner(short_name=short_name)
             return True
         except Exception as e:
@@ -202,4 +208,3 @@ class MeshEngine:
                 self.interface.close()
             except Exception:
                 pass # Suppress noisy shutdown errors
-            self.is_connected = False
