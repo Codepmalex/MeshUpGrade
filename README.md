@@ -74,7 +74,7 @@ Users can DM your node (or broadcast on the Command Channel) the following:
 
 ## 🤝 Contributing
 
-This project is a personal utility tool, but pull requests are welcome if you'd like to help expand the autonomous feature set.
+This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/1)! Also, feel free to fork and modify the project for your own needs.
 
 ## 📜 License
 
