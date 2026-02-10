@@ -19,7 +19,7 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
 - 🏷️ **Node Status Sync**: Automatically sets node short name to **ON** when active and **OFF** when shutting down.
 
 ## 🛠️ Future Features (Roadmap)
-MeshUpGrade is constantly evolving. Please post any ideas for others to add in the discussions tab!
+MeshUpGrade is constantly evolving. Please post any ideas for others to add in the disscusion post 
 
 ## 🚀 Getting Started
 
