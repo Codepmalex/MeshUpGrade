@@ -19,7 +19,7 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
 - 🏷️ **Node Status Sync**: Automatically sets node short name to **ON** when active and **OFF** when shutting down.
 
 ## 🛠️ Future Features (Roadmap)
-MeshUpGrade is constantly evolving. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/1)!
+MeshUpGrade is constantly evolving. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)!
 
 ## 🚀 Getting Started
 
@@ -74,7 +74,7 @@ Users can DM your node (or broadcast on the Command Channel) the following:
 
 ## 🤝 Contributing
 
-This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/1)! Also, feel free to fork and modify the project for your own needs.
+This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)! Also, feel free to fork and modify the project for your own needs.
 
 ## 📜 License
 
