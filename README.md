@@ -18,10 +18,10 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
 - 💾 **Persistence**: Automatically saves connection parameters and preferences.
 - 🏷️ **Node Status Sync**: Automatically sets node short name to **ON** when active and **OFF** when shutting down.
 
-## �️ Future Features (Roadmap)
+## 🛠️ Future Features (Roadmap)
 MeshUpGrade is constantly evolving. Please post any ideas for others to add in the discussions tab!
 
-## �🚀 Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
