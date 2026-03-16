@@ -453,6 +453,14 @@ def main(page: ft.Page):
         """Monitors connection and auto-reconnects if peer resets."""
         while True:
             time.sleep(30)
+            
+            # Send an application-level keepalive to prevent 10-minute NAT/Router drops
+            if engine.is_connected and getattr(engine, 'last_conn_type', None) == 'tcp':
+                try:
+                    engine.interface.sendHeartbeat()
+                except Exception as e:
+                    logging.debug(f"Watchdog keepalive failed: {e}")
+                    
             # Only trigger if we WERE connected before (params exist) but aren't now
             if engine.last_conn_params and not engine.is_connected:
                 # Avoid triggering if we are already in the middle of a recovery

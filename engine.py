@@ -21,7 +21,10 @@ class MeshEngine:
     def is_connected(self):
         if not self.interface:
             return False
-        # The library uses .noProto to indicate the protocol/reader is dead
+        # The library uses .noProto to indicate the protocol/reader is dead, 
+        # but the isConnected event is cleared immediately upon disconnect.
+        if hasattr(self.interface, 'isConnected') and not self.interface.isConnected.is_set():
+            return False
         if hasattr(self.interface, 'noProto') and self.interface.noProto:
             return False
         return True
