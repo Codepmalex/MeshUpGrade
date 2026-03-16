@@ -356,7 +356,7 @@ def main(page: ft.Page):
                 ft.ListTile(
                     title=ft.Text(name, weight="bold"),
                     subtitle=ft.Text(f"IP: {ip}"),
-                    leading=ft.Icon(ft.icons.WIFI),
+                    leading=ft.Icon(ft.icons.ROUTER),
                     on_click=lambda e, ip_addr=ip: select_node(ip_addr)
                 )
             )
