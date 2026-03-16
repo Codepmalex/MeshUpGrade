@@ -337,12 +337,27 @@ def main(page: ft.Page):
     # View Switcher
     content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
+    def auto_find_click(e):
+        status_text.value = "Status: Scanning local WiFi (port 4403)..."
+        page.update()
+
+        def scan_task():
+            found_ips = engine.find_tcp_nodes()
+            if found_ips:
+                ip_address.value = found_ips[0]
+                status_text.value = f"Status: Found node at {found_ips[0]}!"
+            else:
+                status_text.value = "Status: No node found on WiFi."
+            page.update()
+
+        threading.Thread(target=scan_task, daemon=True).start()
+
     def show_connection(e):
         content_area.controls = [
             ft.Text("Connection", size=20),
             ft.Text("WiFi / TCP:", size=16, weight="bold"),
             ft.Text("Tip: Use 'node-name.local' to survive IP changes.", size=12, italic=True),
-            ft.Row([ip_address, ft.ElevatedButton("Connect TCP", on_click=connect_tcp_click)]),
+            ft.Row([ip_address, ft.ElevatedButton("Auto Find", on_click=auto_find_click), ft.ElevatedButton("Connect TCP", on_click=connect_tcp_click)]),
             ft.Divider(),
             ft.Text("USB / Serial:", size=16, weight="bold"),
             ft.Row([serial_port, ft.ElevatedButton("Connect Serial", on_click=connect_serial_click)]),

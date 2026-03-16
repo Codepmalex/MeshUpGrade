@@ -113,6 +113,47 @@ class MeshEngine:
             
         return False
 
+    def find_tcp_nodes(self):
+        """Scans the local subnet for nodes answering on port 4403."""
+        try:
+            # find local ip
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(('10.255.255.255', 1))
+                local_ip = s.getsockname()[0]
+            except:
+                local_ip = '127.0.0.1'
+            finally:
+                s.close()
+
+            if local_ip == '127.0.0.1':
+                logging.error("Could not determine local IP for subnet scan.")
+                return []
+
+            network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
+            logging.info(f"Scanning local subnet {network} for port 4403...")
+            
+            def check_ip(ip):
+                ip_str = str(ip)
+                if ip_str == local_ip: return None
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.2)
+                    if s.connect_ex((ip_str, 4403)) == 0:
+                        return ip_str
+                return None
+
+            candidates = []
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = [executor.submit(check_ip, ip) for ip in network.hosts()]
+                for future in as_completed(futures):
+                    res = future.result()
+                    if res: candidates.append(res)
+            
+            return candidates
+        except Exception as e:
+            logging.error(f"Auto-Find Error: {e}")
+            return []
+
     def _setup_listeners(self):
         pub.subscribe(self._on_receive, "meshtastic.receive")
 
