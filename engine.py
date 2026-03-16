@@ -28,9 +28,19 @@ class MeshtasticListener:
         info = zc.get_service_info(type_, name)
         if info and info.addresses:
             ip = socket.inet_ntoa(info.addresses[0])
-            clean_name = name.split('.')[0]
+            
+            # Default to the pure service name
+            node_name = name.split('.')[0] 
+            
+            # Try to extract the real shortname from the TXT record properties
+            if info.properties and b'shortname' in info.properties:
+                try:
+                    node_name = info.properties[b'shortname'].decode('utf-8')
+                except Exception:
+                    pass
+            
             if self.callback:
-                self.callback(clean_name, ip)
+                self.callback(node_name, ip)
 
 
 class MeshEngine:

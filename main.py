@@ -508,6 +508,10 @@ def main(page: ft.Page):
                 if status_text.value and "Rebooting" in status_text.value:
                     continue
                     
+                # Suspend watchdog if the user is actively manually scanning for nodes
+                if getattr(page, 'dialog', None) and page.dialog.open:
+                    continue
+                    
                 logging.warning("Connection watchdog detected unexpected drop. Triggering recovery...")
                 target_name = engine.last_short_name if engine.last_short_name else "ON"
                 
