@@ -339,6 +339,7 @@ def main(page: ft.Page):
 
     def auto_find_click(e):
         node_list = ft.Column(scroll=ft.ScrollMode.ADAPTIVE, height=200)
+        seen_ips = set()
 
         def close_dialog(e=None):
             engine.stop_mdns_discovery()
@@ -351,6 +352,10 @@ def main(page: ft.Page):
             close_dialog()
 
         def on_node_found(name, ip):
+            if ip in seen_ips:
+                return
+            seen_ips.add(ip)
+            
             # Append a new tile for the discovered node
             node_list.controls.append(
                 ft.ListTile(
@@ -376,7 +381,7 @@ def main(page: ft.Page):
         page.update()
         
         # Start the background sweep
-        engine.start_mdns_discovery(on_node_found)
+        engine.start_hybrid_discovery(on_node_found)
 
     def show_connection(e):
         content_area.controls = [

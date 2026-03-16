@@ -164,6 +164,64 @@ class MeshEngine:
         except Exception as e:
             logging.error(f"mDNS stop failed: {e}")
 
+    def start_hybrid_discovery(self, on_node_found_callback):
+        """Starts mDNS and immediately follows it up with a rapid subnet port scan."""
+        # 1. Start mDNS
+        self.start_mdns_discovery(on_node_found_callback)
+        
+        # 2. Start rapid port sweep in background
+        def sweep_task():
+            try:
+                # find local ip
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    s.connect(('10.255.255.255', 1))
+                    local_ip = s.getsockname()[0]
+                except:
+                    local_ip = '127.0.0.1'
+                finally:
+                    s.close()
+    
+                if local_ip == '127.0.0.1':
+                    return
+    
+                network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
+                logging.info(f"Hybrid: Sweeping local subnet {network} for port 4403...")
+                
+                def check_ip(ip):
+                    ip_str = str(ip)
+                    if ip_str == local_ip: return None
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.settimeout(0.15) # Fast timeout for sweeping
+                        if s.connect_ex((ip_str, 4403)) == 0:
+                            return ip_str
+                    return None
+    
+                import threading
+                with ThreadPoolExecutor(max_workers=75) as executor:
+                    futures = [executor.submit(check_ip, ip) for ip in network.hosts()]
+                    for future in as_completed(futures):
+                        res = future.result()
+                        if res:
+                            # If we find a port 4403, try to briefly get its name, 
+                            # otherwise generic 'Node (Swept)'
+                            node_name = f"Node ({res.split('.')[-1]})"
+                            try:
+                                temp_iface = meshtastic.tcp_interface.TCPInterface(res)
+                                time.sleep(0.5)
+                                name = temp_iface.getShortName()
+                                if name: node_name = name
+                                temp_iface.close()
+                            except:
+                                pass
+                                
+                            on_node_found_callback(node_name, res)
+            except Exception as e:
+                logging.debug(f"Hybrid sweep error: {e}")
+                
+        import threading
+        threading.Thread(target=sweep_task, daemon=True).start()
+
     def _setup_listeners(self):
         pub.subscribe(self._on_receive, "meshtastic.receive")
 
