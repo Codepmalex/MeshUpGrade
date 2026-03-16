@@ -338,19 +338,46 @@ def main(page: ft.Page):
     content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
     def auto_find_click(e):
-        status_text.value = "Status: Scanning local WiFi (port 4403)..."
-        page.update()
+        node_list = ft.Column(scroll=ft.ScrollMode.ADAPTIVE, height=200)
 
-        def scan_task():
-            found_ips = engine.find_tcp_nodes()
-            if found_ips:
-                ip_address.value = found_ips[0]
-                status_text.value = f"Status: Found node at {found_ips[0]}!"
-            else:
-                status_text.value = "Status: No node found on WiFi."
+        def close_dialog(e=None):
+            engine.stop_mdns_discovery()
+            dialog.open = False
             page.update()
 
-        threading.Thread(target=scan_task, daemon=True).start()
+        def select_node(ip_addr):
+            ip_address.value = ip_addr
+            status_text.value = f"Status: Selected node at {ip_addr}."
+            close_dialog()
+
+        def on_node_found(name, ip):
+            # Append a new tile for the discovered node
+            node_list.controls.append(
+                ft.ListTile(
+                    title=ft.Text(name, weight="bold"),
+                    subtitle=ft.Text(f"IP: {ip}"),
+                    leading=ft.Icon(ft.icons.WIFI),
+                    on_click=lambda e, ip_addr=ip: select_node(ip_addr)
+                )
+            )
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Scanning for Meshtastic Nodes..."),
+            content=node_list,
+            actions=[ft.TextButton("Cancel", on_click=close_dialog)],
+            on_dismiss=lambda e: engine.stop_mdns_discovery()
+        )
+
+        page.dialog = dialog
+        dialog.open = True
+        page.update()
+        
+        # Start the background sweep
+        engine.start_mdns_discovery(on_node_found)
 
     def show_connection(e):
         content_area.controls = [

@@ -8,6 +8,31 @@ import ipaddress
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pubsub import pub
 
+try:
+    from zeroconf import Zeroconf, ServiceBrowser, ServiceListener
+except ImportError:
+    Zeroconf = None
+
+class MeshtasticListener:
+    def __init__(self, callback):
+        self.callback = callback
+
+    def update_service(self, zc, type_, name):
+        pass
+
+    def remove_service(self, zc, type_, name):
+        pass
+
+    def add_service(self, zc, type_, name):
+        if not hasattr(zc, 'get_service_info'): return
+        info = zc.get_service_info(type_, name)
+        if info and info.addresses:
+            ip = socket.inet_ntoa(info.addresses[0])
+            clean_name = name.split('.')[0]
+            if self.callback:
+                self.callback(clean_name, ip)
+
+
 class MeshEngine:
     def __init__(self, callback_on_message=None):
         self.interface = None
@@ -61,98 +86,73 @@ class MeshEngine:
         return False
 
     def discover_node(self, target_short_name):
-        """Attempts to find the node on the local subnet if IP changed."""
-        if self.last_conn_type != 'tcp' or not self.last_conn_params:
+        """Attempts to find the node on the local subnet using mDNS."""
+        if self.last_conn_type != 'tcp':
+            return False
+            
+        found_ip = None
+        
+        def on_node(name, ip):
+            nonlocal found_ip
+            if found_ip: return
+            
+            logging.debug(f"mDNS discovered potential node at {ip}")
+            try:
+                # Need to verify the short name matches our target
+                temp_iface = meshtastic.tcp_interface.TCPInterface(ip)
+                time.sleep(1) # Let info sync
+                if temp_iface.getShortName() == target_short_name:
+                    found_ip = ip
+                temp_iface.close()
+            except:
+                pass
+
+        logging.info(f"Scanning via mDNS for node '{target_short_name}'...")
+        if not self.start_mdns_discovery(on_node):
+            return False
+            
+        # Wait up to 15 seconds for mDNS discovery and verification
+        for _ in range(15):
+            if found_ip:
+                break
+            time.sleep(1)
+            
+        self.stop_mdns_discovery()
+        
+        if found_ip:
+            logging.info(f"Found node '{target_short_name}' at new IP: {found_ip}")
+            self.last_conn_params = found_ip
+            return self.connect_tcp(found_ip)
+            
+        logging.error(f"Discovery failed. Node '{target_short_name}' not found.")
+        return False
+
+    def start_mdns_discovery(self, on_node_found):
+        """Starts mDNS zeroconf listener to instantly find nodes."""
+        if not Zeroconf:
+            logging.error("Zeroconf not installed. Cannot run mDNS discovery.")
             return False
             
         try:
-            # Get the current subnet (assuming /24)
-            current_ip = self.last_conn_params
-            if not all(c in "0123456789." for c in current_ip):
-                return False # Might be a hostname already
-                
-            network = ipaddress.ip_network(f"{current_ip}/24", strict=False)
-            logging.info(f"Scanning subnet {network} for node '{target_short_name}'...")
-            
-            def check_ip(ip):
-                ip_str = str(ip)
-                if ip_str == current_ip: return None # Already tried
-                
-                # Fast port check first
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(0.2)
-                    if s.connect_ex((ip_str, 4403)) == 0:
-                        return ip_str
-                return None
-
-            candidates = []
-            with ThreadPoolExecutor(max_workers=50) as executor:
-                futures = [executor.submit(check_ip, ip) for ip in network.hosts()]
-                for future in as_completed(futures):
-                    res = future.result()
-                    if res: candidates.append(res)
-            
-            for ip in candidates:
-                logging.debug(f"Testing candidate node at {ip}...")
-                try:
-                    # Temporary interface to check name
-                    temp_iface = meshtastic.tcp_interface.TCPInterface(ip)
-                    # Wait a moment for name to be fetched
-                    time.sleep(1)
-                    if temp_iface.getShortName() == target_short_name:
-                        logging.info(f"Found node '{target_short_name}' at new IP: {ip}")
-                        temp_iface.close()
-                        self.last_conn_params = ip
-                        return self.connect_tcp(ip)
-                    temp_iface.close()
-                except:
-                    continue
-                    
+            self.stop_mdns_discovery()
+            self.mdns_zeroconf = Zeroconf()
+            self.mdns_listener = MeshtasticListener(on_node_found)
+            self.mdns_browser = ServiceBrowser(self.mdns_zeroconf, "_meshtastic._tcp.local.", self.mdns_listener)
+            logging.info("Started mDNS discovery for _meshtastic._tcp.local.")
+            return True
         except Exception as e:
-            logging.error(f"Discovery error: {e}")
-            
-        return False
+            logging.error(f"mDNS start failed: {e}")
+            return False
 
-    def find_tcp_nodes(self):
-        """Scans the local subnet for nodes answering on port 4403."""
+    def stop_mdns_discovery(self):
+        """Stops the active mDNS listener."""
         try:
-            # find local ip
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                s.connect(('10.255.255.255', 1))
-                local_ip = s.getsockname()[0]
-            except:
-                local_ip = '127.0.0.1'
-            finally:
-                s.close()
-
-            if local_ip == '127.0.0.1':
-                logging.error("Could not determine local IP for subnet scan.")
-                return []
-
-            network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
-            logging.info(f"Scanning local subnet {network} for port 4403...")
-            
-            def check_ip(ip):
-                ip_str = str(ip)
-                if ip_str == local_ip: return None
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(0.2)
-                    if s.connect_ex((ip_str, 4403)) == 0:
-                        return ip_str
-                return None
-
-            candidates = []
-            with ThreadPoolExecutor(max_workers=50) as executor:
-                futures = [executor.submit(check_ip, ip) for ip in network.hosts()]
-                for future in as_completed(futures):
-                    res = future.result()
-                    if res: candidates.append(res)
-            
-            return candidates
+            if hasattr(self, 'mdns_zeroconf') and self.mdns_zeroconf:
+                self.mdns_zeroconf.close()
+                self.mdns_zeroconf = None
+                logging.info("Stopped mDNS discovery.")
         except Exception as e:
-            logging.error(f"Auto-Find Error: {e}")
-            return []
+            logging.error(f"mDNS stop failed: {e}")
 
     def _setup_listeners(self):
         pub.subscribe(self._on_receive, "meshtastic.receive")
