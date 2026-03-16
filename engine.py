@@ -203,17 +203,11 @@ class MeshEngine:
                     for future in as_completed(futures):
                         res = future.result()
                         if res:
-                            # If we find a port 4403, try to briefly get its name, 
-                            # otherwise generic 'Node (Swept)'
-                            node_name = f"Node ({res.split('.')[-1]})"
-                            try:
-                                temp_iface = meshtastic.tcp_interface.TCPInterface(res)
-                                time.sleep(0.5)
-                                name = temp_iface.getShortName()
-                                if name: node_name = name
-                                temp_iface.close()
-                            except:
-                                pass
+                            # We found an open port 4403! 
+                            # Do NOT try to connect with TCPInterface here to get the shortname.
+                            # It is a heavy protobuf handshake and will crash the node.
+                            # Just return the IP address.
+                            node_name = f"Swept Node ({res.split('.')[-1]})"
                                 
                             on_node_found_callback(node_name, res)
             except Exception as e:
