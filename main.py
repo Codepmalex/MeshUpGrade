@@ -134,15 +134,15 @@ def main(page: ft.Page):
                 elif msg == "WX2": response = wx.format_wx2()
                 elif msg == "WX3": response = wx.format_wx3()
                 elif msg == "WX4" or msg.startswith("WX4"):
-                    date_str = msg.replace("WX4", "").strip()
+                    date_str = msg.replace("WX4", "").strip().replace(" ", "-")
                     response = wx.format_wx4(date_str)
                     if response is None:
-                        response = "No Date, please insert date\n(Format- WX4 YYYY-MM-DD)\n(for example, WX4 2026-03-09)"
+                        response = "No Date, please insert date\n(Format: WX4 YYYY MM DD)\n(for example, WX4 2026 03 09)"
                 elif msg == "WX5" or msg.startswith("WX5"):
-                    time_str = msg.replace("WX5", "").strip()
+                    time_str = msg.replace("WX5", "").strip().replace(" ", ":")
                     response = wx.format_wx5(time_str)
                     if response is None:
-                        response = "No Time, please insert time\n(Format- WX5 HH:MM)\n(for example, WX5 14:00)"
+                        response = "No Time, please insert time\n(Format: WX5 HH MM)\n(for example, WX5 14 00)"
                 
                 if response:
                     send_reply(sender, response, channel_index)
