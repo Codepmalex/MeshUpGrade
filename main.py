@@ -89,7 +89,7 @@ def main(page: ft.Page):
     def process_command(msg, sender, packet, channel_index=None):
         # Help Menu handling
         if msg == "/HELP" or msg == "HELP":
-            menu = "--Help Menu--\nDM me the following:\nWeather\n(Other features will be added later)"
+            menu = "--Help Menu--\nDM me the following:\nWEATHER or WX\n(Other features will be added later)"
             send_reply(sender, menu, channel_index)
             return
 
@@ -98,7 +98,7 @@ def main(page: ft.Page):
             return
 
         # Weather handling (Publicly available commands)
-        if msg == "WEATHER":
+        if msg == "WEATHER" or msg == "WX":
             menu = "-WX Menu-\nReply (eg. WX1, WX2)\nWX1-5dayforecast\nWX2-HRLYforecast\nWX3-GenForecast\nWX4-CustomFC\nWX5-HrlyCustom"
             send_reply(sender, menu, channel_index)
             return
