@@ -64,6 +64,7 @@ def load_settings():
     return {}
 
 from weather import WeatherPlugin
+from sms_gateway import AprsIsGateway
 
 def main(page: ft.Page):
     page.title = "MeshUpGrade"
@@ -71,6 +72,11 @@ def main(page: ft.Page):
     
     settings = load_settings()
     engine = MeshEngine()
+    
+    # SMS Gateway Setup
+    sms_gateway = AprsIsGateway()
+    # Provide callback to send meshtastic message when SMS reply comes in
+    sms_gateway.callback_on_sms_reply = lambda phone, txt, target: engine.send_dm(target, f"SMS from {phone}:\n{txt}") if target else None
     
     # Weather Settings
     lat_field = ft.TextField(label="Backup Latitude", value=settings.get("lat", "40.7128"), width=150)
@@ -149,6 +155,28 @@ def main(page: ft.Page):
             except Exception as e:
                 logging.error(f"Error processing WX command: {e}")
                 send_reply(sender, "Error processing weather request.", channel_index)
+            return
+
+        # SMS command handling ?1234567890 Message
+        if msg.startswith("?"):
+            parts = msg[1:].split(" ", 1)
+            if len(parts) == 2:
+                phone_raw = parts[0]
+                body = parts[1]
+                
+                # Verify numeric
+                clean_phone = re.sub(r'[^\d]', '', phone_raw)
+                if len(clean_phone) >= 7: # Basic check for valid phone number length
+                    if sms_gateway.connected:
+                        send_reply(sender, f"Relaying SMS to {clean_phone} via APRS...", channel_index)
+                        if not sms_gateway.send_sms(clean_phone, body, sender):
+                           send_reply(sender, "Error sending SMS: APRS Gateway Failed.", channel_index) 
+                    else:
+                        send_reply(sender, "SMS Service Offline. Gateway not configured or disconnected.", channel_index)
+                else:
+                    send_reply(sender, "Invalid phone number format. Use ?1234567890 Message", channel_index)
+            else:
+                send_reply(sender, "Format error. Use: ?1234567890 Your text here", channel_index)
             return
 
         if use_signal_test.value:
@@ -334,6 +362,11 @@ def main(page: ft.Page):
                 threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
         page.update()
 
+    callsign_field = ft.TextField(label="HAM Callsign", value=settings.get("callsign", ""), width=150)
+    passcode_field = ft.TextField(label="APRS Passcode", value=settings.get("passcode", ""), password=True, can_reveal_password=True, width=150)
+    retries_field = ft.TextField(label="Max Retries", value=str(settings.get("sms_retries", 3)), width=100)
+    cooldown_field = ft.TextField(label="Retry Cooldown (s)", value=str(settings.get("sms_cooldown", 15)), width=130)
+
     def update_settings_click(e):
         settings.update({
             "lat": lat_field.value,
@@ -347,11 +380,31 @@ def main(page: ft.Page):
             "use_alerts": use_alerts.value,
             "alert_channel": int(alert_channel.value),
             "use_signal_test": use_signal_test.value,
-            "cmd_channel": int(cmd_channel.value)
+            "cmd_channel": int(cmd_channel.value),
+            "callsign": callsign_field.value,
+            "passcode": passcode_field.value,
+            "sms_retries": int(retries_field.value if retries_field.value.isdigit() else 3),
+            "sms_cooldown": int(cooldown_field.value if cooldown_field.value.isdigit() else 15)
         })
         save_settings(settings)
         logging.info("Settings saved.")
+        
+        # Apply SMS settings
+        engine.max_retries = settings["sms_retries"]
+        engine.retry_cooldown = settings["sms_cooldown"]
+        if settings["callsign"] and settings["passcode"]:
+            sms_gateway.configure(settings["callsign"], settings["passcode"])
+            if not sms_gateway.connected:
+                sms_gateway.connect()
+                
         page.update()
+        
+    # Apply initial SMS settings
+    engine.max_retries = int(settings.get("sms_retries", 3))
+    engine.retry_cooldown = int(settings.get("sms_cooldown", 15))
+    if settings.get("callsign") and settings.get("passcode"):
+        sms_gateway.configure(settings["callsign"], settings["passcode"])
+        sms_gateway.connect()
 
     # Signal Test Toggle
     use_signal_test = ft.Switch(label="Signal Test (Auto-reply SNR/RSSI)", value=settings.get("use_signal_test", True))
@@ -451,6 +504,23 @@ def main(page: ft.Page):
         ]
         page.update()
 
+    def show_sms(e):
+        sms_status = ft.Text(f"Gateway Status: {'Connected to APRS-IS' if sms_gateway.connected else 'Disconnected'}", color="green" if sms_gateway.connected else "red")
+        content_area.controls = [
+            ft.Text("SMS & APRS Gateway", size=20),
+            sms_status,
+            ft.Text("To use the SMS Gateway, you must provide a valid Amateur Radio Callsign and an APRS-IS Passcode.\nReplies from cell phones will be routed back to the original radio sender automatically via DMs.", size=12, italic=True),
+            ft.Divider(),
+            ft.Text("APRS-IS Authentication:", size=16, weight="bold"),
+            ft.Row([callsign_field, passcode_field]),
+            ft.Divider(),
+            ft.Text("Mesh Retry Logic (No-ACK Auto-resend):", size=16, weight="bold"),
+            ft.Row([retries_field, cooldown_field]),
+            ft.Divider(),
+            ft.ElevatedButton("Save Settings & Connect", on_click=update_settings_click)
+        ]
+        page.update()
+
     def show_terminal(e):
         content_area.controls = [
             ft.Text("Terminal", size=20),
@@ -461,6 +531,7 @@ def main(page: ft.Page):
     nav_row = ft.Row([
         ft.ElevatedButton("Connection", on_click=show_connection),
         ft.ElevatedButton("Weather", on_click=show_weather),
+        ft.ElevatedButton("SMS & APRS", on_click=show_sms),
         ft.ElevatedButton("Terminal", on_click=show_terminal),
     ])
 

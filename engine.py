@@ -51,6 +51,44 @@ class MeshEngine:
         self.last_info_broadcast_time = 0
         self.last_conn_type = None  # 'tcp' or 'serial'
         self.last_conn_params = None
+        
+        # SMS Auto-Retry System
+        self.ack_tracker = {}
+        self.max_retries = 3
+        self.retry_cooldown = 15
+        self.retry_thread = threading.Thread(target=self._retry_loop, daemon=True)
+        self.retry_thread.start()
+
+    def _retry_loop(self):
+        while True:
+            time.sleep(1)
+            if not self.is_connected:
+                continue
+            
+            now = time.time()
+            # Copy items mapping to avoid dictionary changed size during iteration error
+            for pkt_id, data in list(self.ack_tracker.items()):
+                if now - data['last_sent'] >= self.retry_cooldown:
+                    if data['retries'] < self.max_retries:
+                        logging.warning(f"No ACK for direct message to {data['dest_id']}. Retrying ({data['retries'] + 1}/{self.max_retries})...")
+                        try:
+                            # Re-send the text directly
+                            new_packet = self.interface.sendText(data['message'], destinationId=data['dest_id'])
+                            new_id = new_packet.id
+                            
+                            # Create new tracked entry and delete old one
+                            self.ack_tracker[new_id] = {
+                                'dest_id': data['dest_id'],
+                                'message': data['message'],
+                                'retries': data['retries'] + 1,
+                                'last_sent': now
+                            }
+                            del self.ack_tracker[pkt_id]
+                        except Exception as e:
+                            logging.error(f"Retry failed: {e}")
+                    else:
+                        logging.error(f"Max retries reached for message to {data['dest_id']}. Delivery failed.")
+                        del self.ack_tracker[pkt_id]
 
     @property
     def is_connected(self):
@@ -220,6 +258,15 @@ class MeshEngine:
         pub.subscribe(self._on_receive, "meshtastic.receive")
 
     def _on_receive(self, packet, interface):
+        # ACK Tracking interception
+        if packet.get('decoded', {}).get('portnum') == 'ROUTING_APP':
+            routing = packet.get('decoded', {}).get('routing', {})
+            if routing.get('errorReason') == 'NONE':
+                req_id = packet.get('decoded', {}).get('requestId')
+                if req_id in self.ack_tracker:
+                    logging.info(f"Received ACK for msg {req_id}. Delivery confirmed.")
+                    del self.ack_tracker[req_id]
+
         if self.callback_on_message:
             self.callback_on_message(packet)
 
@@ -233,7 +280,14 @@ class MeshEngine:
             message = message[:197] + "..."
             
         try:
-            self.interface.sendText(message, destinationId=dest_id)
+            packet = self.interface.sendText(message, destinationId=dest_id, wantAck=True)
+            if hasattr(packet, 'id'):
+                self.ack_tracker[packet.id] = {
+                    'dest_id': dest_id,
+                    'message': message,
+                    'retries': 0,
+                    'last_sent': time.time()
+                }
             return True
         except Exception as e:
             logging.error(f"Failed to send DM: {e}")
