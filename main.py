@@ -597,8 +597,8 @@ def main(page: ft.Page):
             if engine.is_connected and getattr(engine, 'last_conn_type', None) == 'tcp':
                 try:
                     engine.interface.sendHeartbeat()
-                except Exception as e:
-                    logging.debug(f"Watchdog keepalive failed: {e}")
+                except BaseException as e:
+                    logging.debug(f"Watchdog keepalive failed (expected if node offline): {e}")
                     
             # Only trigger if we WERE connected before (params exist) but aren't now
             if engine.last_conn_params and not engine.is_connected:

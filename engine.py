@@ -85,8 +85,8 @@ class MeshEngine:
                                 'last_sent': now
                             }
                             del self.ack_tracker[pkt_id]
-                        except Exception as e:
-                            logging.error(f"Retry failed: {e}")
+                        except BaseException as e:
+                            logging.error(f"Retry failed (likely offline): {e}")
                     else:
                         logging.error(f"Max retries reached for message to {data['dest_id']}. Delivery failed.")
                         del self.ack_tracker[pkt_id]
@@ -260,10 +260,12 @@ class MeshEngine:
 
     def _on_receive(self, packet, interface):
         # ACK Tracking interception
-        if packet.get('decoded', {}).get('portnum') == 'ROUTING_APP':
+        port = packet.get('decoded', {}).get('portnum')
+        if port == 'ROUTING_APP':
             routing = packet.get('decoded', {}).get('routing', {})
+            logging.info(f"DEBUG AL: Routing Packet rx: {packet}")
             if routing.get('errorReason') == 'NONE':
-                req_id = packet.get('decoded', {}).get('requestId')
+                req_id = routing.get('requestId') or packet.get('decoded', {}).get('requestId')
                 if req_id in self.ack_tracker:
                     logging.info(f"Received ACK for msg {req_id}. Delivery confirmed.")
                     del self.ack_tracker[req_id]

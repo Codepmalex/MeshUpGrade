@@ -26,6 +26,7 @@ class AprsIsGateway:
     def connect(self):
         if not self.callsign or not self.passcode:
             logging.warning("APRS-IS not configured. Cannot connect SMS Gateway.")
+            self.connected = False
             return False
             
         try:
