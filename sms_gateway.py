@@ -62,6 +62,7 @@ class AprsIsGateway:
             
             self.connected = True
             self.should_run = True
+            self.last_rx_time = time.time()
             self.sock.settimeout(0.5) # Non-blocking for loop
             
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
@@ -121,12 +122,15 @@ class AprsIsGateway:
                     logging.error("APRS-IS connection closed by server.")
                     break
                     
+                self.last_rx_time = time.time()
                 buf += data
                 while "\n" in buf:
                     line, buf = buf.split("\n", 1)
                     self._parse_line(line.strip())
             except socket.timeout:
-                pass
+                if getattr(self, 'last_rx_time', 0) and time.time() - self.last_rx_time > 120:
+                    logging.error("APRS-IS connection timed out (no keepalives for 120s). Dropping.")
+                    break
             except Exception as e:
                 logging.error(f"APRS-IS listening error: {e}")
                 break

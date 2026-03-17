@@ -635,6 +635,12 @@ def main(page: ft.Page):
                 except BaseException as e:
                     logging.debug(f"Watchdog keepalive failed (expected if node offline): {e}")
                     
+            # SMS Gateway Auto-Reconnect
+            if getattr(sms_gateway, 'callsign', None) and getattr(sms_gateway, 'passcode', None):
+                if not sms_gateway.connected:
+                    logging.warning("APRS-IS Connection dropped. Auto-reconnecting in background...")
+                    sms_gateway.connect()
+                    
             # Only trigger if we WERE connected before (params exist) but aren't now
             if engine.last_conn_params and not engine.is_connected:
                 # Avoid triggering if we are already in the middle of a recovery
