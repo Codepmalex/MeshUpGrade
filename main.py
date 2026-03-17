@@ -75,8 +75,43 @@ def main(page: ft.Page):
     
     # SMS Gateway Setup
     sms_gateway = AprsIsGateway()
-    # Provide callback to send meshtastic message when SMS reply comes in
-    sms_gateway.callback_on_sms_reply = lambda phone, txt, target: engine.send_dm(target, f"SMS from {phone}:\n{txt}") if target else None
+    pending_sms = {}
+    
+    def handle_sms_reply(phone, txt, target):
+        if target:
+            engine.send_dm(target, f"SMS from {phone}:\n{txt}")
+            return
+            
+        txt_upper = txt.strip().upper()
+        # If the user is replying with what looks like a 4-character short name
+        if len(txt_upper) <= 4 and txt_upper.isalnum():
+            found_id = None
+            if engine.interface and hasattr(engine.interface, 'nodes'):
+                for node_id, node_info in engine.interface.nodes.items():
+                    if node_info.get('user', {}).get('shortName') == txt_upper:
+                        found_id = node_id
+                        break
+            
+            if found_id:
+                # Link established
+                sms_gateway.routing_table[phone] = found_id
+                sms_gateway.save_routes()
+                
+                # Was there a pending message waiting for this link?
+                if phone in pending_sms:
+                    old_msg = pending_sms.pop(phone)
+                    engine.send_dm(found_id, f"SMS from {phone}:\n{old_msg}")
+                    sms_gateway.send_sms(phone, f"Linked to Node {txt_upper}. Message delivered.", "SYSTEM")
+                else:
+                    sms_gateway.send_sms(phone, f"Linked to Node {txt_upper}.", "SYSTEM")
+            else:
+                sms_gateway.send_sms(phone, f"Node '{txt_upper}' not found on the mesh. Please check the spelling and try again.", "SYSTEM")
+        else:
+            # We don't have a route, and this doesn't look like a short name link attempt.
+            pending_sms[phone] = txt
+            sms_gateway.send_sms(phone, "MeshUpGrade: Unknown route. Reply with the EXACT 4-character short name of the node you want to message.", "SYSTEM")
+
+    sms_gateway.callback_on_sms_reply = handle_sms_reply
     
     # Weather Settings
     lat_field = ft.TextField(label="Backup Latitude", value=settings.get("lat", "40.7128"), width=150)

@@ -3,6 +3,10 @@ import logging
 import threading
 import time
 import re
+import json
+import os
+
+ROUTES_FILE = "sms_routes.json"
 
 class AprsIsGateway:
     def __init__(self, callback_on_sms_reply=None):
@@ -17,7 +21,24 @@ class AprsIsGateway:
         
         self.callback_on_sms_reply = callback_on_sms_reply
         # Map phone number to original sender Node ID to route replies
-        self.routing_table = {}
+        self.routing_table = self._load_routes()
+
+    def _load_routes(self):
+        if os.path.exists(ROUTES_FILE):
+            try:
+                with open(ROUTES_FILE, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading {ROUTES_FILE}: {e}")
+        return {}
+        
+    def save_routes(self):
+        try:
+            with open(ROUTES_FILE, 'w') as f:
+                json.dumps(self.routing_table) # test serialize
+                json.dump(self.routing_table, f, indent=4)
+        except Exception as e:
+            logging.error(f"Error saving {ROUTES_FILE}: {e}")
 
     def configure(self, callsign, passcode):
         self.callsign = callsign.upper().strip()
@@ -73,6 +94,7 @@ class AprsIsGateway:
         
         # Save mapping for replies
         self.routing_table[clean_phone] = original_sender_id
+        self.save_routes()
         
         # Aprs format: CALLSIGN>APRS,TCPIP*:>SMS       :@1234567890 Message{01
         # The 'SMS' addressee field must be exactly 9 chars padded with spaces
