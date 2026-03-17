@@ -28,17 +28,39 @@ class GuiLogHandler(logging.Handler):
             pass
 
 import json
+import re
 
 SETTINGS_FILE = "settings.json"
 
 def save_settings(settings):
+    json_str = json.dumps(settings, indent=4)
+    header = """## MeshUpGrade Settings Configuration
+## This file can be edited manually. Lines starting with ## are ignored.
+## Values Guide:
+## lat, lon        - Your coordinates (e.g., "40.7128", "-74.0060")
+## unit            - "F" for Fahrenheit, "C" for Celsius
+## use_alerts      - true or false
+## alert_channel   - Channel index for severe weather broadcasts (e.g. "0")
+## cmd_channel     - Channel index for command broadcasts ("-1" for DM only)
+## use_signal_test - true or false (auto-reply for ping testing)
+## sync_shortname  - true or false (changes node name to ON/OFF)
+## sync_ping       - true or false (broadcasts name change to mesh)
+
+"""
     with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+        f.write(header + json_str)
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
+            content = f.read()
+            # Strip commented lines so standard JSON parser doesn't crash
+            cleaned = re.sub(r'^\s*#.*$', '', content, flags=re.MULTILINE)
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError as e:
+                logging.error(f"Error parsing settings.json: {e}")
+                return {}
     return {}
 
 from weather import WeatherPlugin
