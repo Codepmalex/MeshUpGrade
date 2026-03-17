@@ -192,7 +192,7 @@ class MeshEngine:
                     ip_str = str(ip)
                     if ip_str == local_ip: return None
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        s.settimeout(0.15) # Fast timeout for sweeping
+                        s.settimeout(0.75) # Allow 750ms for slow ESP32 handshakes
                         if s.connect_ex((ip_str, 4403)) == 0:
                             return ip_str
                     return None
@@ -295,8 +295,16 @@ class MeshEngine:
         if not self.interface or not self.interface.localNode or not self.is_connected:
             return False
         try:
-            sn = short_name if short_name else self.interface.getShortName()
+            curr_sn = self.interface.getShortName()
+            sn = short_name if short_name else curr_sn
             ln = long_name if long_name else self.interface.getLongName()
+            
+            # Avoid redundant flash writes and reboot loops
+            if sn == curr_sn:
+                logging.info(f"Node shortname is already '{sn}'. Skipping redundant flash write to prevent crash.")
+                self.last_info_broadcast_time = time.time()
+                return True
+                
             logging.info(f"Re-broadcasting node info to mesh (Short: {sn})...")
             self.interface.localNode.setOwner(long_name=ln, short_name=sn)
             self.last_info_broadcast_time = time.time()
