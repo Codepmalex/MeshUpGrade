@@ -152,8 +152,19 @@ def main(page: ft.Page):
     def process_command(msg, sender, packet, channel_index=None):
         # Help Menu handling
         if msg == "/HELP" or msg == "HELP":
-            menu = "--Help Menu--\nDM me the following:\nWEATHER or WX\n(Other features will be added later)"
+            menu = "--Help Menu--\nDM me the following:\nWEATHER or WX\nINBOX\n(Other features will be added later)"
             send_reply(sender, menu, channel_index)
+            return
+
+        if msg == "INBOX" or msg == "/INBOX":
+            pending = engine.check_inbox(sender)
+            if not pending:
+                send_reply(sender, "Inbox empty.", channel_index)
+            else:
+                send_reply(sender, f"Flushing {len(pending)} messages from Offline Inbox...", channel_index)
+                for i, txt in enumerate(pending):
+                    time.sleep(1) # small delay if multiple
+                    send_reply(sender, txt, channel_index)
             return
 
         if msg == "/STATUS":

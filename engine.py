@@ -6,7 +6,11 @@ import time
 import socket
 import ipaddress
 import threading
+import json
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+INBOX_FILE = "sms_inbox.json"
 from pubsub import pub
 
 try:
@@ -57,8 +61,35 @@ class MeshEngine:
         self.ack_tracker = {}
         self.max_retries = 3
         self.retry_cooldown = 15
+        
+        # SMS Offline Inbox
+        self.offline_inbox = self._load_inbox()
+        
         self.retry_thread = threading.Thread(target=self._retry_loop, daemon=True)
         self.retry_thread.start()
+
+    def _load_inbox(self):
+        if os.path.exists(INBOX_FILE):
+            try:
+                with open(INBOX_FILE, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading {INBOX_FILE}: {e}")
+        return {}
+        
+    def save_inbox(self):
+        try:
+            with open(INBOX_FILE, 'w') as f:
+                json.dump(self.offline_inbox, f, indent=4)
+        except Exception as e:
+            logging.error(f"Error saving {INBOX_FILE}: {e}")
+
+    def check_inbox(self, dest_id):
+        # Returns list of pending messages and clears them
+        messages = self.offline_inbox.pop(dest_id, [])
+        if messages:
+            self.save_inbox()
+        return messages
 
     def _retry_loop(self):
         while True:
@@ -88,7 +119,11 @@ class MeshEngine:
                         except BaseException as e:
                             logging.error(f"Retry failed (likely offline): {e}")
                     else:
-                        logging.error(f"Max retries reached for message to {data['dest_id']}. Delivery failed.")
+                        logging.warning(f"Max retries reached for {data['dest_id']}. Spooling to Offline Inbox.")
+                        if data['dest_id'] not in self.offline_inbox:
+                            self.offline_inbox[data['dest_id']] = []
+                        self.offline_inbox[data['dest_id']].append(data['message'])
+                        self.save_inbox()
                         del self.ack_tracker[pkt_id]
 
     @property
@@ -259,6 +294,20 @@ class MeshEngine:
         pub.subscribe(self._on_receive, "meshtastic.receive")
 
     def _on_receive(self, packet, interface):
+        # Auto-flush Offline Inbox if we see activity from a node
+        sender = packet.get('fromId')
+        if sender and sender in self.offline_inbox:
+            # Check if there are messages waiting
+            pending = self.check_inbox(sender)
+            if pending:
+                logging.info(f"Node {sender} is active! Auto-flushing {len(pending)} offline messages.")
+                # We spin up a thread so we don't block the packet reception thread
+                def flush_msgs(dest, msgs):
+                    for m in msgs:
+                        self.send_dm(dest, m)
+                        time.sleep(5) # Space out bursting
+                threading.Thread(target=flush_msgs, args=(sender, pending), daemon=True).start()
+
         # ACK Tracking interception
         port = packet.get('decoded', {}).get('portnum')
         if port == 'ROUTING_APP':
