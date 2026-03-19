@@ -1,25 +1,21 @@
-# MeshUpGrade v0.1.2.5
+# MeshUpGrade v0.3.0
 
-MeshUpGrade is a utility-focused autonomous information node for Meshtastic networks. It turns your node into an information-on-demand server, allowing other users on the mesh to query automated services like weather forecasts and signal testing via DMs and specific channels.
+MeshUpGrade is a massive utility-focused autonomous information node for Meshtastic networks. It turns your node into an information-on-demand server, allowing other users on the mesh to query automated services like weather forecasts, active NWS alerts, local Bulletin Boards (BBS), cron-job reminders, and even a two-way SMS-to-Cellular gateway via APRS-IS.
 
 ## ✨ Core Purpose
-The primary goal of MeshUpGrade is mesh utility. It runs as a background service on your PC/Mac/Linux machine, connected to a Meshtastic node, and responds to mesh queries without human intervention.
+The primary goal of MeshUpGrade is mesh utility. It runs as a background service on your PC/Mac/Linux machine or natively headless via Termux on Android. Once connected to a Meshtastic node, it responds to mesh queries entirely without human intervention!
 
 ## ⚙️ Features
 
-- 🤖 **Autonomous Info Node**: Responds to DMs and channel broadcasts with useful data.
-- 🌦️ **Weather Plugin (Autonomous)**: 
-  - On-demand forecasts (current, hourly, 5-day) triggered by mesh commands.
-  - Automated NWS Alert Monitoring: Identifies local weather warnings and broadcasts them to a specified channel.
-- 📡 **Signal Testing Service**: Automatically replies to mesh pings/DMs with SNR and RSSI data to help others test their link.
-- 🔄 **Channel Command Routing**: Bridges public channel broadcasts to the autonomous engine.
-- 🖥️ **Configuration GUI**: A simple Flet-based interface for easy setup of IP addresses, ports, and plugin preferences.
-- 🔒 **Security**: Built-in 200-character enforcement for all outgoing mesh messages.
-- 💾 **Persistence**: Automatically saves connection parameters and preferences.
-- 🏷️ **Node Status Sync**: Automatically sets node short name to **ON** when active and **OFF** when shutting down.
-
-## 🛠️ Future Features (Roadmap)
-MeshUpGrade is constantly evolving. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)!
+- 🤖 **Autonomous Info Node**: Responds to DMs and channel broadcasts with useful system data, signal metrics, and utilities.
+- 📱 **APRS-IS SMS Gateway**: Seamlessly route two-way text messages between standard cell phones and off-grid Mesh users! Features an intelligent SMS memory cache (`?L` quick-reply) and an offline spooling `INBOX`.
+- 📌 **Local Bulletin Board System (BBS)**: Host localized textual boards with dynamic user subscriptions (`BBS SUB`) and auto-expiring messages (`BBSTX`).
+- ⏰ **Background Cron Reminders**: Schedule localized future alerts and string deliveries via the `RMD` scheduler.
+- 🌦️ **Weather Integration**: 
+  - On-demand forecasts (current, hourly, 5-day).
+  - `WXA`: Instantly poll for active, severe National Weather Service alerts!
+- 🖥️ **Cross-Platform**: Run the full desktop Flet GUI on Mac/PC or deploy `headless.py` directly onto a Termux Android device for a robust, portable background server.
+- 🏷️ **Status Sync**: Automatically updates your node's short name to **ON** when active and forcefully syncs it back to **OFF** when shutting down.
 
 ## 🚀 Getting Started
 
@@ -49,32 +45,51 @@ MeshUpGrade is constantly evolving. Please post any ideas for others to add [her
 
 ## 🛠️ Usage
 
-1. **Run the app**:
+1. **Run the App**:
    ```bash
+   # Desktop GUI
    python main.py
+   
+   # Android / Background Server
+   python headless.py
    ```
-2. **Connect**: Input your node's IP address and click **Connect**.
+2. **Connect**: Input your node's IP or Serial port and click **Connect**.
 3. **Configure**:
-   - Set your **Backup Location** (Lat/Lon) in the Weather tab for NWS/Meteo data.
-   - Pick an **Alert Channel** to broadcast NWS warnings.
-   - Pick a **Command Channel** for public interaction (e.g., "WEATHER").
+   - Set up your HAM Callsign and APRS Passcode in the "SMS & APRS" tab to unlock cell-phone texting!
+   - Configure local BBS boards and expiration limits under the "BBS" tab.
 
-## 🌦️ Mesh Commands
+## 📟 Mesh Commands
 
-Users can DM your node (or broadcast on the Command Channel) the following:
+Users can DM your node (or broadcast on the Command Channel) the following case-insensitive commands:
 
-- `WEATHER`: Shows the autonomous weather menu.
-- `WX1`: 5-Day Concise Forecast.
-- `WX2`: 5-Hour Forecast.
-- `WX3`: General Written Forecast.
-- `WX4 YYYY-MM-DD`: Custom date forecast.
-- `WX5 HH:MM`: Custom hour forecast (Today).
-- `HELP`: Shows the help menu.
-- Any other message: Replies with Signal Strength (SNR/RSSI) if Signal Test is enabled.
+### Core System
+- `HELP`: Displays the global system overview menu.
+- `STATUS`: Returns a simple "Node is healthy." ping.
+- `UPTIME`: Displays exactly how long the python background server has been actively routing on the network.
+- `INBOX`: Fetches and manually flushes any pending messages stored in the node's offline SMS inbox.
+
+### Weather System (NWS Integration)
+- `WX` / `WEATHER`: Displays the weather sub-menu.
+- `WXA`: Instantly triggers a localized National Weather Service backend poll and returns active structural alerts directly to your radio.
+- `WX1` to `WX5`: Various short-term, 5-day, and localized time-specific forecasts.
+
+### Bulletin Board System (BBS)
+- `BBS`: Triggers the dynamic group-list and syntax menu.
+- `BBSRX <group> [pX]`: Retrieves paginated messages from a targeted board (e.g. `BBSRX group1 p2`).
+- `BBSTX <group> [exp<hours>] <msg>`: Posts a customized message directly onto a targeted board (e.g. `BBSTX group1 exp2 I'll be at the park!`). Messages vanish entirely at expiration.
+- `BBS SUB <group>`: Subscribes your user ID directly to the specified group, allowing you to intercept delivery notifications anytime a user posts a message. 
+
+### Local Cron Timers
+- `RMD` / `REMIND`: Displays cron-job syntax helper menu.
+- `RMD HH:MM [YYYY-MM-DD] <msg>`: Schedules a background chron-job that sweeps JSON every 60 seconds and pings you the appended text exactly at that scheduled time.
+
+### SMS Gateway (APRS-IS)
+- `?<phonenumber> <msg>`: Binds an active session directly to standard cellular networks and transmits your packet over APRS (e.g. `?15551234567 Hello There!`).
+- `?L <msg>`: Utilizes the automatic memory cache to instantly fire a text message back to the absolute last 10-digit cellphone number engaged with your node ID (memory cache expires intelligently after 30 minutes).
 
 ## 🤝 Contributing
 
-This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)! Also, feel free to fork and modify the project for your own needs.
+This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)!
 
 ## 📜 License
 
