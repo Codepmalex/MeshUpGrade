@@ -124,6 +124,16 @@ class WeatherPlugin:
         except ValueError:
             return None
 
+    def format_wxa(self):
+        alerts = self.get_alerts()
+        if not alerts:
+            return "No active weather alerts for your area."
+        
+        lines = ["--Active WX Alerts--"]
+        for alert in alerts:
+            lines.append(f"⚠️ {alert['event']} ({alert['severity']})")
+        return "\n".join(lines)
+
     def get_alerts(self):
         # NWS API requires a User-Agent
         headers = {'User-Agent': 'MeshUpGrade (meshtastic-alert-system)'}

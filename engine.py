@@ -1,7 +1,31 @@
+import sys
+import logging
+try:
+    import serial.tools.list_ports
+except ImportError:
+    import types
+    # Mock the serial package for Android/Termux where it fails to build/import
+    sys.modules['serial'] = types.ModuleType('serial')
+    
+    tools_mod = types.ModuleType('serial.tools')
+    sys.modules['serial.tools'] = tools_mod
+    sys.modules['serial'].tools = tools_mod
+    
+    list_ports_mod = types.ModuleType('serial.tools.list_ports')
+    list_ports_mod.comports = lambda *args, **kwargs: []
+    sys.modules['serial.tools.list_ports'] = list_ports_mod
+    sys.modules['serial.tools'].list_ports = list_ports_mod
+
 import meshtastic
 import meshtastic.tcp_interface
-import meshtastic.serial_interface
 import logging
+try:
+    import meshtastic.serial_interface
+    SERIAL_AVAILABLE = True
+except Exception as e:
+    # Android Termux cannot load the underlying pyserial module due to missing /dev/tty
+    logging.warning(f"Serial interface disabled (Normal for Android/Termux environments): {e}")
+    SERIAL_AVAILABLE = False
 import time
 import socket
 import ipaddress
@@ -151,6 +175,10 @@ class MeshEngine:
             return False
 
     def connect_serial(self, dev_path=None):
+        if not SERIAL_AVAILABLE:
+            logging.error("Serial Connection is not supported on this device.")
+            return False
+            
         try:
             self.last_conn_type = 'serial'
             self.last_conn_params = dev_path

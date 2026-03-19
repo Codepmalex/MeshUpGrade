@@ -7,6 +7,8 @@ import time
 from datetime import datetime
 from engine import MeshEngine
 
+START_TIME = time.time()
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -65,6 +67,8 @@ def load_settings():
 
 from weather import WeatherPlugin
 from sms_gateway import AprsIsGateway
+from reminders import ReminderManager
+from bbs_manager import BbsManager
 
 def main(page: ft.Page):
     page.title = "MeshUpGrade"
@@ -73,12 +77,13 @@ def main(page: ft.Page):
     settings = load_settings()
     engine = MeshEngine()
     
-    # SMS Gateway Setup
     sms_gateway = AprsIsGateway()
     pending_sms = {}
+    sms_quick_cache = {}
     
     def handle_sms_reply(phone, txt, target):
         if target:
+            sms_quick_cache[target] = {'phone': phone, 'time': time.time()}
             engine.send_dm(target, f"SMS from {phone}:\n{txt}")
             return
             
@@ -96,6 +101,7 @@ def main(page: ft.Page):
                 # Link established
                 sms_gateway.routing_table[phone] = found_id
                 sms_gateway.save_routes()
+                sms_quick_cache[found_id] = {'phone': phone, 'time': time.time()}
                 
                 # Was there a pending message waiting for this link?
                 if phone in pending_sms:
@@ -149,14 +155,19 @@ def main(page: ft.Page):
         else:
             engine.send_dm(sender, text)
 
+    reminder_mgr = ReminderManager(send_reply)
+    bbs_mgr = BbsManager(engine, send_reply, settings)
+
     def process_command(msg, sender, packet, channel_index=None):
+        msg = msg.lstrip("/") # Strip potential slashes for backwards compatibility
+        
         # Help Menu handling
-        if msg == "/HELP" or msg == "HELP":
-            menu = "--Help Menu--\nDM me the following:\nWEATHER or WX\nINBOX\n(Other features will be added later)"
+        if msg == "HELP":
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
             return
 
-        if msg == "INBOX" or msg == "/INBOX":
+        if msg == "INBOX":
             pending = engine.check_inbox(sender)
             if not pending:
                 send_reply(sender, "Inbox empty.", channel_index)
@@ -167,13 +178,42 @@ def main(page: ft.Page):
                     send_reply(sender, txt, channel_index)
             return
 
-        if msg == "/STATUS":
+        if msg == "STATUS":
             send_reply(sender, "Node is healthy.", channel_index)
             return
+            
+        if msg == "UPTIME":
+            elapsed = int(time.time() - START_TIME)
+            days, rem = divmod(elapsed, 86400)
+            hours, rem = divmod(rem, 3600)
+            minutes, _ = divmod(rem, 60)
+            if days > 0:
+                uptime_str = f"{days}d {hours}h {minutes}m uptime"
+            elif hours > 0:
+                uptime_str = f"{hours}h {minutes}m uptime"
+            else:
+                uptime_str = f"{minutes}m uptime"
+            send_reply(sender, uptime_str, channel_index)
+            return
 
-        # Weather handling (Publicly available commands)
+        if msg == "RMD" or msg == "REMIND":
+            resp = reminder_mgr.parse_command("RMD", sender, channel_index)
+            send_reply(sender, resp, channel_index)
+            return
+            
+        if msg.startswith("RMD ") or msg.startswith("REMIND "):
+            # We pass the original message so casing isn't strictly destroyed when parsing the actual alert text, but we uppercase the command check
+            resp = reminder_mgr.parse_command(msg, sender, channel_index)
+            send_reply(sender, resp, channel_index)
+            return
+
+        if msg.startswith("BBS"):
+            bbs_mgr.parse_command(msg, sender, channel_index)
+            return
+
+        # Weather handling
         if msg == "WEATHER" or msg == "WX":
-            menu = "-WX Menu-\nReply (eg. WX1, WX2)\nWX1-5dayforecast\nWX2-HRLYforecast\nWX3-GenForecast\nWX4-CustomFC\nWX5-HrlyCustom"
+            menu = "-WX Menu-\nReply (eg. WX1)\nWX1-5dayforecast\nWX2-HRLYforecast\nWX3-GenForecast\nWX4-CustomFC\nWX5-HrlyCustom\nWXA-Alerts"
             send_reply(sender, menu, channel_index)
             return
         
@@ -185,6 +225,7 @@ def main(page: ft.Page):
                 if msg == "WX1": response = wx.format_wx1()
                 elif msg == "WX2": response = wx.format_wx2()
                 elif msg == "WX3": response = wx.format_wx3()
+                elif msg == "WXA": response = wx.format_wxa()
                 elif msg == "WX4" or msg.startswith("WX4"):
                     date_str = msg.replace("WX4", "").strip().replace(" ", "-")
                     response = wx.format_wx4(date_str)
@@ -209,10 +250,21 @@ def main(page: ft.Page):
             if len(parts) == 2:
                 phone_raw = parts[0]
                 body = parts[1]
+                clean_phone = ""
+                
+                if phone_raw.upper() == "L":
+                    cached = sms_quick_cache.get(sender)
+                    if cached and (time.time() - cached['time']) < 1800:
+                        clean_phone = cached['phone']
+                    else:
+                        send_reply(sender, "No recent SMS saved, or it expired.", channel_index)
+                        return
+                else:
+                    clean_phone = re.sub(r'[^\d]', '', phone_raw)
                 
                 # Verify numeric
-                clean_phone = re.sub(r'[^\d]', '', phone_raw)
                 if len(clean_phone) >= 7: # Basic check for valid phone number length
+                    sms_quick_cache[sender] = {'phone': clean_phone, 'time': time.time()}
                     if sms_gateway.connected:
                         send_reply(sender, f"Relaying SMS to {clean_phone} via APRS...", channel_index)
                         if not sms_gateway.send_sms(clean_phone, body, sender):
@@ -413,6 +465,15 @@ def main(page: ft.Page):
     retries_field = ft.TextField(label="Max Retries", value=str(settings.get("sms_retries", 3)), width=100)
     cooldown_field = ft.TextField(label="Retry Cooldown (s)", value=str(settings.get("sms_cooldown", 15)), width=130)
 
+    bbs_active_groups_field = ft.TextField(label="Active Groups (comma-separated)", value=", ".join(settings.get("bbs_active_groups", ["group1", "group2"])), width=300)
+    bbs_default_exp_field = ft.TextField(label="Default Expiration (Hours)", value=str(settings.get("bbs_default_exp", 12)), width=150)
+    bbs_max_exp_field = ft.TextField(label="Max Allowed Expiration (Hours)", value=str(settings.get("bbs_max_exp", 48)), width=150)
+    bbs_channel = ft.Dropdown(
+        label="BBS Broadcast Channel",
+        options=[ft.dropdown.Option("-1", "DM Only")] + [ft.dropdown.Option(str(i), f"Channel {i}") for i in range(8)],
+        value=str(settings.get("bbs_channel", "-1")),
+    )
+
     def update_settings_click(e):
         settings.update({
             "lat": lat_field.value,
@@ -430,7 +491,11 @@ def main(page: ft.Page):
             "callsign": callsign_field.value,
             "passcode": passcode_field.value,
             "sms_retries": int(retries_field.value if retries_field.value.isdigit() else 3),
-            "sms_cooldown": int(cooldown_field.value if cooldown_field.value.isdigit() else 15)
+            "sms_cooldown": int(cooldown_field.value if cooldown_field.value.isdigit() else 15),
+            "bbs_active_groups": [g.strip() for g in bbs_active_groups_field.value.split(",") if g.strip()],
+            "bbs_default_exp": int(bbs_default_exp_field.value if bbs_default_exp_field.value.isdigit() else 12),
+            "bbs_max_exp": int(bbs_max_exp_field.value if bbs_max_exp_field.value.isdigit() else 48),
+            "bbs_channel": int(bbs_channel.value)
         })
         save_settings(settings)
         logging.info("Settings saved.")
@@ -442,6 +507,12 @@ def main(page: ft.Page):
             sms_gateway.configure(settings["callsign"], settings["passcode"])
             if not sms_gateway.connected:
                 sms_gateway.connect()
+                
+        # Apply BBS Settings
+        bbs_mgr.groups = [g.lower() for g in settings["bbs_active_groups"]]
+        bbs_mgr.default_exp = settings["bbs_default_exp"]
+        bbs_mgr.max_exp = settings["bbs_max_exp"]
+        bbs_mgr.bbs_channel = settings["bbs_channel"]
                 
         page.update()
         
@@ -574,10 +645,24 @@ def main(page: ft.Page):
         ]
         page.update()
 
+    def show_bbs(e):
+        content_area.controls = [
+            ft.Text("Bulletin Board System (BBS)", size=20),
+            ft.Text("Configure the local BBS groups and message expiration limits.", size=12, italic=True),
+            ft.Divider(),
+            bbs_active_groups_field,
+            ft.Row([bbs_default_exp_field, bbs_max_exp_field]),
+            bbs_channel,
+            ft.Divider(),
+            ft.ElevatedButton("Save Settings", on_click=update_settings_click)
+        ]
+        page.update()
+
     nav_row = ft.Row([
         ft.ElevatedButton("Connection", on_click=show_connection),
         ft.ElevatedButton("Weather", on_click=show_weather),
-        ft.ElevatedButton("SMS & APRS", on_click=show_sms),
+        ft.ElevatedButton("SMS", on_click=show_sms),
+        ft.ElevatedButton("BBS", on_click=show_bbs),
         ft.ElevatedButton("Terminal", on_click=show_terminal),
     ])
 
@@ -676,4 +761,7 @@ def main(page: ft.Page):
     page.on_close = shutdown_app
 
 if __name__ == "__main__":
+    if not os.path.exists("assets"):
+        os.makedirs("assets")
+    logging.info("Starting MeshUpGrade GUI...")
     ft.app(target=main)
