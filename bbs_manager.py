@@ -67,7 +67,7 @@ class BbsManager:
         
         if cmd == "BBS" and len(parts) == 1:
             glist = ", ".join(self.groups)
-            menu = f"-BBS Menu-\nActive: {glist}\nbbsrx <grp> [pX]\nbbstx <grp> [expHrs] <msg>\nbbs sub <grp>\nbbsaddgroup <name>\nbbsdelgroup <name>"
+            menu = f"-BBS Menu-\nActive: {glist}\nbbsrx <grp> [pX]\nbbstx <grp> [expHrs] <msg>\nbbs sub <grp>\nbbsunsub <grp>\nbbsaddgroup <name>\nbbsdelgroup <name>"
             self.send_reply(sender, menu, channel_index)
             return
 
@@ -80,6 +80,22 @@ class BbsManager:
                 self.store["subscriptions"][group].append(sender)
                 self.save_store()
             self.send_reply(sender, f"Subscribed to DM notifications for {group}!", channel_index)
+            return
+
+        if cmd == "BBSUNSUB":
+            if len(parts) < 2:
+                self.send_reply(sender, "Usage: BBSUNSUB <group>", channel_index)
+                return
+            group = parts[1].lower()
+            if group not in self.groups:
+                self.send_reply(sender, f"Group '{group}' not found.", channel_index)
+                return
+            if sender in self.store["subscriptions"][group]:
+                self.store["subscriptions"][group].remove(sender)
+                self.save_store()
+                self.send_reply(sender, f"Unsubscribed from {group}.", channel_index)
+            else:
+                self.send_reply(sender, f"You are not subscribed to {group}.", channel_index)
             return
 
         if cmd == "BBSRX":
