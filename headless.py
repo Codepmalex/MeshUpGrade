@@ -11,6 +11,7 @@ from weather import WeatherPlugin
 from sms_gateway import AprsIsGateway
 from reminders import ReminderManager
 from bbs_manager import BbsManager
+from sms_contacts import SmsContactsManager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -101,6 +102,7 @@ def main():
 
     reminder_mgr = ReminderManager(send_reply)
     bbs_mgr = BbsManager(engine, send_reply, settings)
+    sms_contacts_mgr = SmsContactsManager()
 
     START_TIME = time.time()
     
@@ -109,7 +111,7 @@ def main():
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time\n?SMS : APRS Texting"
             send_reply(sender, menu, channel_index)
             return
 
@@ -193,6 +195,35 @@ def main():
 
         # SMS command handling ?1234567890 Message
         if msg.startswith("?"):
+            prefix_cmd = msg[1:].strip().split(" ", 1)
+            cmd_type = prefix_cmd[0].lower()
+            
+            if cmd_type == "sms":
+                menu = "-SMS Menu-\n?1234567890 <msg>\n?<name> <msg>\n?L <msg> : Reply last\n?addcontact <name> <num>\n?delcontact <name>"
+                send_reply(sender, menu, channel_index)
+                return
+                
+            if cmd_type == "addcontact":
+                arg_parts = msg[1:].strip().split(" ")
+                if len(arg_parts) >= 3:
+                    name = arg_parts[1]
+                    num = arg_parts[2]
+                    status, reply_msg = sms_contacts_mgr.add_contact(sender, name, num)
+                    send_reply(sender, reply_msg, channel_index)
+                else:
+                    send_reply(sender, "Usage: ?addcontact <name> <number>", channel_index)
+                return
+                
+            if cmd_type == "delcontact":
+                arg_parts = msg[1:].strip().split(" ")
+                if len(arg_parts) >= 2:
+                    name = arg_parts[1]
+                    status, reply_msg = sms_contacts_mgr.del_contact(sender, name)
+                    send_reply(sender, reply_msg, channel_index)
+                else:
+                    send_reply(sender, "Usage: ?delcontact <name>", channel_index)
+                return
+
             parts = msg[1:].split(" ", 1)
             if len(parts) == 2:
                 phone_raw = parts[0]
@@ -207,7 +238,11 @@ def main():
                         send_reply(sender, "No recent SMS saved, or it expired.", channel_index)
                         return
                 else:
-                    clean_phone = re.sub(r'[^\d]', '', phone_raw)
+                    looked_up = sms_contacts_mgr.get_number(sender, phone_raw)
+                    if looked_up:
+                        clean_phone = looked_up
+                    else:
+                        clean_phone = re.sub(r'[^\d]', '', phone_raw)
                 
                 if len(clean_phone) >= 7:
                     sms_quick_cache[sender] = {'phone': clean_phone, 'time': time.time()}
@@ -218,7 +253,7 @@ def main():
                     else:
                         send_reply(sender, "SMS Service Offline. Gateway not configured or disconnected.", channel_index)
                 else:
-                    send_reply(sender, "Invalid phone number format. Use ?1234567890 Message", channel_index)
+                    send_reply(sender, f"Invalid phone or unknown contact '{phone_raw}'.", channel_index)
             else:
                 send_reply(sender, "Format error. Use: ?1234567890 Your text here", channel_index)
             return
