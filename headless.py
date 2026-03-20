@@ -111,7 +111,7 @@ def main():
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time\n?SMS : APRS Texting"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
             return
 
@@ -193,14 +193,24 @@ def main():
                 send_reply(sender, "Error processing weather request.", channel_index)
             return
 
+        # SMS menu alias (so users can type SMS on a channel without ?)
+        if msg == "SMS":
+            menu = "-SMS Menu-\n?<number> <msg>\n?<name> <msg>\n?L <msg> : Reply last\n?addcontact <name> <num>\n?delcontact <name>\n?contactlist"
+            send_reply(sender, menu, channel_index)
+            return
+
         # SMS command handling ?1234567890 Message
         if msg.startswith("?"):
             prefix_cmd = msg[1:].strip().split(" ", 1)
             cmd_type = prefix_cmd[0].lower()
             
             if cmd_type == "sms":
-                menu = "-SMS Menu-\n?1234567890 <msg>\n?<name> <msg>\n?L <msg> : Reply last\n?addcontact <name> <num>\n?delcontact <name>"
+                menu = "-SMS Menu-\n?<number> <msg>\n?<name> <msg>\n?L <msg> : Reply last\n?addcontact <name> <num>\n?delcontact <name>\n?contactlist"
                 send_reply(sender, menu, channel_index)
+                return
+
+            if cmd_type == "contactlist":
+                send_reply(sender, sms_contacts_mgr.list_contacts(sender), channel_index)
                 return
                 
             if cmd_type == "addcontact":

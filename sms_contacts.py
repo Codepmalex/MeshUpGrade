@@ -50,3 +50,11 @@ class SmsContactsManager:
         if sender in self.contacts and name in self.contacts[sender]:
             return self.contacts[sender][name]
         return None
+
+    def list_contacts(self, sender):
+        if sender not in self.contacts or not self.contacts[sender]:
+            return "No contacts saved."
+        lines = ["-Your Contacts-"]
+        for name, number in self.contacts[sender].items():
+            lines.append(f"{name}: {number}")
+        return "\n".join(lines)

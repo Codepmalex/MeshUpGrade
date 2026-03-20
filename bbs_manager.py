@@ -67,7 +67,7 @@ class BbsManager:
         
         if cmd == "BBS" and len(parts) == 1:
             glist = ", ".join(self.groups)
-            menu = f"-BBS Menu-\nActive: {glist}\nbbsrx <grp> [pX]\nbbstx <grp> [expHrs] <msg>\nbbs sub <grp>\nEx: bbsrx group1 p2"
+            menu = f"-BBS Menu-\nActive: {glist}\nbbsrx <grp> [pX]\nbbstx <grp> [expHrs] <msg>\nbbs sub <grp>\nbbsaddgroup <name>\nbbsdelgroup <name>"
             self.send_reply(sender, menu, channel_index)
             return
 
@@ -180,3 +180,44 @@ class BbsManager:
                 if sub != sender: # Don't notify the person who just sent it!
                     time.sleep(1)
                     self.engine.send_dm(sub, notification_str)
+
+        if cmd == "BBSADDGROUP":
+            if len(parts) < 2:
+                self.send_reply(sender, "Usage: BBSADDGROUP <name>", channel_index)
+                return
+            group = parts[1].lower()
+            if group in self.groups:
+                self.send_reply(sender, f"Group '{group}' already exists.", channel_index)
+                return
+            self.groups.append(group)
+            self.store["messages"][group] = []
+            self.store["subscriptions"][group] = []
+            self.settings["bbs_active_groups"] = self.groups
+            self.save_store()
+            self._save_settings()
+            self.send_reply(sender, f"Group '{group}' created!", channel_index)
+            return
+
+        if cmd == "BBSDELGROUP":
+            if len(parts) < 2:
+                self.send_reply(sender, "Usage: BBSDELGROUP <name>", channel_index)
+                return
+            group = parts[1].lower()
+            if group not in self.groups:
+                self.send_reply(sender, f"Group '{group}' not found.", channel_index)
+                return
+            self.groups.remove(group)
+            self.store["messages"].pop(group, None)
+            self.store["subscriptions"].pop(group, None)
+            self.settings["bbs_active_groups"] = self.groups
+            self.save_store()
+            self._save_settings()
+            self.send_reply(sender, f"Group '{group}' deleted.", channel_index)
+            return
+
+    def _save_settings(self):
+        try:
+            with open("settings.json", 'w') as f:
+                json.dump(self.settings, f, indent=4)
+        except Exception as e:
+            logging.error(f"Failed to save settings.json: {e}")
