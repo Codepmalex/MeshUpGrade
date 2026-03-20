@@ -177,6 +177,9 @@ def main():
                 elif msg == "WXA": response = wx.format_wxa()
                 elif msg == "WX4" or msg.startswith("WX4"):
                     date_str = msg.replace("WX4", "").strip().replace(" ", "-")
+                    if date_str.upper() == "TMW":
+                        from datetime import timedelta
+                        date_str = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     response = wx.format_wx4(date_str)
                     if response is None:
                         response = "No Date, please insert date\n(Format: WX4 YYYY MM DD)\n(for example, WX4 2026 03 09)"
