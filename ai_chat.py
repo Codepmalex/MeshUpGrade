@@ -70,16 +70,18 @@ class AiChatManager:
         import requests
         headers = {
             "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
+            "anthropic-version": "2023-06-01"
         }
         payload = {
             "model": self.model,
-            "max_tokens": 100,
+            "max_tokens": 150,
             "system": self.SYSTEM_PROMPT,
             "messages": messages
         }
+        logging.info(f"Anthropic request: model={self.model}")
         resp = requests.post("https://api.anthropic.com/v1/messages", json=payload, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            logging.error(f"Anthropic API response: {resp.status_code} - {resp.text[:300]}")
         resp.raise_for_status()
         data = resp.json()
         return data["content"][0]["text"]
