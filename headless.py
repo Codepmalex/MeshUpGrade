@@ -13,6 +13,7 @@ from sms_gateway import AprsIsGateway
 from reminders import ReminderManager
 from bbs_manager import BbsManager
 from sms_contacts import SmsContactsManager
+from ai_chat import AiChatManager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -104,6 +105,7 @@ def main():
     reminder_mgr = ReminderManager(send_reply)
     bbs_mgr = BbsManager(engine, send_reply, settings)
     sms_contacts_mgr = SmsContactsManager()
+    ai_mgr = AiChatManager(settings)
 
     START_TIME = time.time()
     
@@ -112,7 +114,7 @@ def main():
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nAI : AI Chat\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
             return
 
@@ -159,6 +161,26 @@ def main():
         if msg.startswith("BBS"):
             # BBS handles its own replies, expirations, and cross-channel routing
             bbs_mgr.parse_command(msg, sender, channel_index)
+            return
+
+        if msg == "AI":
+            menu = "-AI Menu-\nai <prompt>\nai newchat"
+            send_reply(sender, menu, channel_index)
+            return
+
+        if msg.startswith("AI "):
+            ai_body = msg[3:].strip()
+            if ai_body.upper() == "NEWCHAT":
+                ai_mgr.clear_session(sender)
+                send_reply(sender, "AI chat history cleared!", channel_index)
+                return
+            response = ai_mgr.chat(sender, ai_body)
+            if len(response) <= 200:
+                send_reply(sender, response, channel_index)
+            else:
+                send_reply(sender, response[:200], channel_index)
+                time.sleep(5)
+                send_reply(sender, response[200:400], channel_index)
             return
 
         # Weather handling

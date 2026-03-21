@@ -70,6 +70,7 @@ from sms_gateway import AprsIsGateway
 from reminders import ReminderManager
 from bbs_manager import BbsManager
 from sms_contacts import SmsContactsManager
+from ai_chat import AiChatManager
 
 def main(page: ft.Page):
     page.title = "MeshUpGrade"
@@ -159,13 +160,14 @@ def main(page: ft.Page):
     reminder_mgr = ReminderManager(send_reply)
     bbs_mgr = BbsManager(engine, send_reply, settings)
     sms_contacts_mgr = SmsContactsManager()
+    ai_mgr = AiChatManager(settings)
 
     def process_command(msg, sender, packet, channel_index=None):
         msg = msg.lstrip("/") # Strip potential slashes for backwards compatibility
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nAI : AI Chat\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
             return
 
@@ -211,6 +213,26 @@ def main(page: ft.Page):
 
         if msg.startswith("BBS"):
             bbs_mgr.parse_command(msg, sender, channel_index)
+            return
+
+        if msg == "AI":
+            menu = "-AI Menu-\nai <prompt>\nai newchat"
+            send_reply(sender, menu, channel_index)
+            return
+
+        if msg.startswith("AI "):
+            ai_body = msg[3:].strip()
+            if ai_body.upper() == "NEWCHAT":
+                ai_mgr.clear_session(sender)
+                send_reply(sender, "AI chat history cleared!", channel_index)
+                return
+            response = ai_mgr.chat(sender, ai_body)
+            if len(response) <= 200:
+                send_reply(sender, response, channel_index)
+            else:
+                send_reply(sender, response[:200], channel_index)
+                time.sleep(5)
+                send_reply(sender, response[200:400], channel_index)
             return
 
         # Weather handling
@@ -706,11 +728,56 @@ def main(page: ft.Page):
         ]
         page.update()
 
+    ai_vendor_dropdown = ft.Dropdown(
+        label="AI Vendor",
+        options=[ft.dropdown.Option("anthropic", "Anthropic"), ft.dropdown.Option("openai", "OpenAI")],
+        value=settings.get("ai_vendor", "anthropic"),
+        width=180,
+    )
+    ai_model_dropdown = ft.Dropdown(
+        label="AI Model",
+        options=[
+            ft.dropdown.Option("claude-3-5-haiku-20241022", "Claude 3.5 Haiku"),
+            ft.dropdown.Option("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet"),
+            ft.dropdown.Option("claude-3-opus-20240229", "Claude 3 Opus"),
+            ft.dropdown.Option("gpt-4o-mini", "GPT-4o Mini"),
+            ft.dropdown.Option("gpt-4o", "GPT-4o"),
+            ft.dropdown.Option("gpt-4-turbo", "GPT-4 Turbo"),
+        ],
+        value=settings.get("ai_model", "claude-3-5-haiku-20241022"),
+        width=250,
+    )
+    ai_api_key_field = ft.TextField(label="API Key", value=settings.get("ai_api_key", ""), password=True, can_reveal_password=True, width=400)
+
+    def save_ai_settings(e):
+        settings["ai_vendor"] = ai_vendor_dropdown.value
+        settings["ai_model"] = ai_model_dropdown.value
+        settings["ai_api_key"] = ai_api_key_field.value
+        save_settings(settings)
+        ai_mgr.vendor = settings["ai_vendor"]
+        ai_mgr.model = settings["ai_model"]
+        ai_mgr.api_key = settings["ai_api_key"]
+        logging.info("AI settings saved.")
+        page.update()
+
+    def show_ai(e):
+        content_area.controls = [
+            ft.Text("AI Chat Configuration", size=20),
+            ft.Text("Configure the AI vendor, model, and API key for mesh AI chat.", size=12, italic=True),
+            ft.Divider(),
+            ft.Row([ai_vendor_dropdown, ai_model_dropdown]),
+            ai_api_key_field,
+            ft.Divider(),
+            ft.ElevatedButton("Save AI Settings", on_click=save_ai_settings),
+        ]
+        page.update()
+
     nav_row = ft.Row([
         ft.ElevatedButton("Connection", on_click=show_connection),
         ft.ElevatedButton("Weather", on_click=show_weather),
         ft.ElevatedButton("SMS", on_click=show_sms),
         ft.ElevatedButton("BBS", on_click=show_bbs),
+        ft.ElevatedButton("AI", on_click=show_ai),
         ft.ElevatedButton("Terminal", on_click=show_terminal),
     ])
 
