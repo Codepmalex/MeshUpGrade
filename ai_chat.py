@@ -1,5 +1,6 @@
 import logging
 import time
+import json as json_lib
 
 class AiChatManager:
     SYSTEM_PROMPT = (
@@ -10,8 +11,8 @@ class AiChatManager:
 
     VENDORS = {
         "anthropic": {
-            "models": ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
-            "default": "claude-3-5-haiku-20241022"
+            "models": ["claude-3-haiku-20240307", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+            "default": "claude-3-haiku-20240307"
         },
         "openai": {
             "models": ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
@@ -59,7 +60,6 @@ class AiChatManager:
                 return f"Unknown AI vendor '{self.vendor}'."
         except Exception as e:
             logging.error(f"AI API error: {e}")
-            # Remove the failed message from history so it doesn't pollute future calls
             session["messages"].pop()
             return f"AI Error: {str(e)[:150]}"
 
@@ -67,21 +67,39 @@ class AiChatManager:
         return response
 
     def _call_anthropic(self, messages):
-        import anthropic
-        client = anthropic.Anthropic(api_key=self.api_key)
-        logging.info(f"Calling Anthropic: model={self.model}")
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=150,
-            system=self.SYSTEM_PROMPT,
-            messages=messages
-        )
-        return response.content[0].text
+        import requests
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        payload = {
+            "model": self.model,
+            "max_tokens": 150,
+            "system": self.SYSTEM_PROMPT,
+            "messages": messages
+        }
+        body = json_lib.dumps(payload)
+        logging.info(f"Anthropic API call: model={self.model}, url={url}")
+        resp = requests.post(url, data=body, headers=headers, timeout=30)
+        logging.info(f"Anthropic response status: {resp.status_code}")
+        if resp.status_code != 200:
+            logging.error(f"Anthropic error body: {resp.text[:500]}")
+            error_data = resp.json() if resp.text else {}
+            error_msg = error_data.get("error", {}).get("message", resp.text[:150])
+            raise Exception(f"{resp.status_code}: {error_msg}")
+        data = resp.json()
+        return data["content"][0]["text"]
 
     def _call_openai(self, messages):
         import requests
+        url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
         oai_messages = [{"role": "system", "content": self.SYSTEM_PROMPT}] + messages
         payload = {
@@ -89,7 +107,11 @@ class AiChatManager:
             "max_tokens": 150,
             "messages": oai_messages
         }
-        resp = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
+        body = json_lib.dumps(payload)
+        resp = requests.post(url, data=body, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            error_data = resp.json() if resp.text else {}
+            error_msg = error_data.get("error", {}).get("message", resp.text[:150])
+            raise Exception(f"{resp.status_code}: {error_msg}")
         data = resp.json()
         return data["choices"][0]["message"]["content"]

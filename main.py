@@ -737,14 +737,14 @@ def main(page: ft.Page):
     ai_model_dropdown = ft.Dropdown(
         label="AI Model",
         options=[
-            ft.dropdown.Option("claude-3-5-haiku-20241022", "Claude 3.5 Haiku"),
+            ft.dropdown.Option("claude-3-haiku-20240307", "Claude 3.5 Haiku"),
             ft.dropdown.Option("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet"),
             ft.dropdown.Option("claude-3-opus-20240229", "Claude 3 Opus"),
             ft.dropdown.Option("gpt-4o-mini", "GPT-4o Mini"),
             ft.dropdown.Option("gpt-4o", "GPT-4o"),
             ft.dropdown.Option("gpt-4-turbo", "GPT-4 Turbo"),
         ],
-        value=settings.get("ai_model", "claude-3-5-haiku-20241022"),
+        value=settings.get("ai_model", "claude-3-haiku-20240307"),
         width=250,
     )
     ai_api_key_field = ft.TextField(label="API Key", value=settings.get("ai_api_key", ""), password=True, can_reveal_password=True, width=400)
