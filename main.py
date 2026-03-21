@@ -163,7 +163,8 @@ def main(page: ft.Page):
     ai_mgr = AiChatManager(settings)
 
     def process_command(msg, sender, packet, channel_index=None):
-        msg = msg.lstrip("/") # Strip potential slashes for backwards compatibility
+        msg_original = msg.lstrip("/")
+        msg = msg_original.upper()
         
         # Help Menu handling
         if msg == "HELP":
@@ -221,7 +222,7 @@ def main(page: ft.Page):
             return
 
         if msg.startswith("AI "):
-            ai_body = msg[3:].strip()
+            ai_body = msg_original[3:].strip()
             if ai_body.upper() == "NEWCHAT":
                 ai_mgr.clear_session(sender)
                 send_reply(sender, "AI chat history cleared!", channel_index)
@@ -277,9 +278,9 @@ def main(page: ft.Page):
             send_reply(sender, menu, channel_index)
             return
 
-        # SMS command handling ?1234567890 Message
-        if msg.startswith("?"):
-            prefix_cmd = msg[1:].strip().split(" ", 1)
+        # SMS command handling
+        if msg_original.startswith("?"):
+            prefix_cmd = msg_original[1:].strip().split(" ", 1)
             cmd_type = prefix_cmd[0].lower()
             
             if cmd_type == "sms":
@@ -312,7 +313,7 @@ def main(page: ft.Page):
                     send_reply(sender, "Usage: ?delcontact <name>", channel_index)
                 return
 
-            parts = msg[1:].split(" ", 1)
+            parts = msg_original[1:].split(" ", 1)
             if len(parts) == 2:
                 phone_raw = parts[0]
                 body = parts[1]
@@ -358,7 +359,7 @@ def main(page: ft.Page):
 
     def on_message_received(packet):
         if 'decoded' in packet and packet['decoded'].get('portnum') == 'TEXT_MESSAGE_APP':
-            msg = packet['decoded']['payload'].decode('utf-8').strip().upper()
+            msg = packet['decoded']['payload'].decode('utf-8').strip()
             sender = packet['fromId']
             if packet.get('toId') != '^all':
                 logging.info(f"DM from {sender}: {msg}")
