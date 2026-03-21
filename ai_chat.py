@@ -1,6 +1,5 @@
 import logging
 import time
-import threading
 
 class AiChatManager:
     SYSTEM_PROMPT = (
@@ -25,7 +24,6 @@ class AiChatManager:
         self.vendor = settings.get("ai_vendor", "anthropic").lower()
         self.model = settings.get("ai_model", self.VENDORS.get(self.vendor, {}).get("default", ""))
         self.api_key = settings.get("ai_api_key", "")
-        # Per-user conversation histories: {sender: {"messages": [...], "last_active": timestamp}}
         self.sessions = {}
         self.session_ttl = 1800  # 30 minutes
 
@@ -61,41 +59,34 @@ class AiChatManager:
                 return f"Unknown AI vendor '{self.vendor}'."
         except Exception as e:
             logging.error(f"AI API error: {e}")
+            # Remove the failed message from history so it doesn't pollute future calls
+            session["messages"].pop()
             return f"AI Error: {str(e)[:150]}"
 
         session["messages"].append({"role": "assistant", "content": response})
         return response
 
     def _call_anthropic(self, messages):
-        import requests
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01"
-        }
-        payload = {
-            "model": self.model,
-            "max_tokens": 150,
-            "system": self.SYSTEM_PROMPT,
-            "messages": messages
-        }
-        logging.info(f"Anthropic request: model={self.model}")
-        resp = requests.post("https://api.anthropic.com/v1/messages", json=payload, headers=headers, timeout=30)
-        if resp.status_code != 200:
-            logging.error(f"Anthropic API response: {resp.status_code} - {resp.text[:300]}")
-        resp.raise_for_status()
-        data = resp.json()
-        return data["content"][0]["text"]
+        import anthropic
+        client = anthropic.Anthropic(api_key=self.api_key)
+        logging.info(f"Calling Anthropic: model={self.model}")
+        response = client.messages.create(
+            model=self.model,
+            max_tokens=150,
+            system=self.SYSTEM_PROMPT,
+            messages=messages
+        )
+        return response.content[0].text
 
     def _call_openai(self, messages):
         import requests
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
         }
         oai_messages = [{"role": "system", "content": self.SYSTEM_PROMPT}] + messages
         payload = {
             "model": self.model,
-            "max_tokens": 100,
+            "max_tokens": 150,
             "messages": oai_messages
         }
         resp = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=30)
