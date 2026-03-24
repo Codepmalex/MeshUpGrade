@@ -91,11 +91,11 @@ class AprsIsGateway:
             logging.error("APRS SMS Gateway not connected. Cannot send.")
             return False
             
-        # Rate limit: wait at least 7 seconds between sends to avoid APRS spam blocking
+        # Rate limit: wait at least 10 seconds between sends to avoid APRS spam blocking
         now = time.time()
         elapsed = now - self.last_sms_time
-        if elapsed < 7:
-            wait = 7 - elapsed
+        if elapsed < 10:
+            wait = 10 - elapsed
             logging.info(f"SMS rate limit: waiting {wait:.1f}s before sending...")
             time.sleep(wait)
         
@@ -134,7 +134,18 @@ class AprsIsGateway:
                     line, buf = buf.split("\n", 1)
                     self._parse_line(line.strip())
             except socket.timeout:
-                if getattr(self, 'last_rx_time', 0) and time.time() - self.last_rx_time > 120:
+                now = time.time()
+                # Send keepalive every 60s to keep connection alive
+                if hasattr(self, '_last_keepalive') and now - self._last_keepalive > 60:
+                    try:
+                        self.sock.send(b"#keepalive\n")
+                        self._last_keepalive = now
+                    except:
+                        pass
+                else:
+                    if not hasattr(self, '_last_keepalive'):
+                        self._last_keepalive = now
+                if getattr(self, 'last_rx_time', 0) and now - self.last_rx_time > 120:
                     logging.error("APRS-IS connection timed out (no keepalives for 120s). Dropping.")
                     break
             except Exception as e:
@@ -147,39 +158,44 @@ class AprsIsGateway:
         # Ignore server comments starting with #
         if line.startswith("#"):
             return
+        
+        # Log ALL incoming APRS traffic for debugging
+        logging.debug(f"APRS-IS RX: {line}")
             
-        # Look for messages TO us FROM SMS:
-        # SMS>...::OURCALL  :@1234567890 The reply text{ID
-        if f":{self.callsign.ljust(9)}:@" in line and line.startswith("SMS>"):
-            try:
-                # Extract the payload after the addressee
-                payload = line.split(f":{self.callsign.ljust(9)}:", 1)[1]
-                
-                # Payload format is @1234567890 Message body{ID
-                if payload.startswith("@"):
-                    # Split at first space to separate number and message
-                    parts = payload[1:].split(" ", 1)
-                    if len(parts) == 2:
-                        reply_phone = parts[0]
-                        reply_msg = parts[1]
+        # Look for messages TO us: anything containing ::OURCALL  :@
+        callsign_field = f":{self.callsign.ljust(9)}:@"
+        if callsign_field not in line:
+            return
+        
+        try:
+            # Extract the payload after the addressee
+            payload = line.split(f":{self.callsign.ljust(9)}:", 1)[1]
+            
+            # Payload format is @1234567890 Message body{ID
+            if payload.startswith("@"):
+                # Split at first space to separate number and message
+                parts = payload[1:].split(" ", 1)
+                if len(parts) == 2:
+                    reply_phone = parts[0]
+                    reply_msg = parts[1]
+                    
+                    # Strip trailing ack request if present e.g. "Message body{123"
+                    if "{" in reply_msg:
+                        reply_msg = reply_msg.split("{")[0]
                         
-                        # Strip trailing ack request if present e.g. "Message body{123"
-                        if "{" in reply_msg:
-                            reply_msg = reply_msg.split("{")[0]
-                            
-                        logging.info(f"Received SMS reply from {reply_phone}: {reply_msg}")
-                        
-                        # Send ACK back to APRS-IS if it had an ID
-                        if "{" in payload:
-                            msg_id = payload.split("{")[1]
-                            ack_packet = f"{self.callsign}>APRS,TCPIP*::{'SMS'.ljust(9)}:ack{msg_id}\n"
-                            try:
-                                self.sock.send(ack_packet.encode('utf-8'))
-                            except:
-                                pass
-                        
-                        if self.callback_on_sms_reply:
-                            target_mesh_node = self.routing_table.get(reply_phone)
-                            self.callback_on_sms_reply(reply_phone, reply_msg, target_mesh_node)
-            except Exception as e:
-                logging.error(f"Error parsing APRS SMS packet: {e} | Line: {line}")
+                    logging.info(f"Received SMS reply from {reply_phone}: {reply_msg}")
+                    
+                    # Send ACK back to APRS-IS if it had an ID
+                    if "{" in payload:
+                        msg_id = payload.split("{")[1]
+                        ack_packet = f"{self.callsign}>APRS,TCPIP*::{'SMS'.ljust(9)}:ack{msg_id}\n"
+                        try:
+                            self.sock.send(ack_packet.encode('utf-8'))
+                        except:
+                            pass
+                    
+                    if self.callback_on_sms_reply:
+                        target_mesh_node = self.routing_table.get(reply_phone)
+                        self.callback_on_sms_reply(reply_phone, reply_msg, target_mesh_node)
+        except Exception as e:
+            logging.error(f"Error parsing APRS SMS packet: {e} | Line: {line}")
