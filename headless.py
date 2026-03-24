@@ -115,38 +115,37 @@ def main():
                 sms_gateway.save_routes()
                 sms_quick_cache[node_id] = {'phone': phone, 'time': now}
                 sms_sessions[phone] = {'node_id': node_id, 'last_active': now}
+                
                 if pending.get('connect_only'):
-                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
+                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM", update_route=False)
                 else:
-                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}. Sending your message now.", "SYSTEM")
+                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}. Sending your message now.", "SYSTEM", update_route=False)
                     time.sleep(2)
                     _send_to_node(phone, node_id, pending['message'])
-                return
             else:
-                sms_gateway.send_sms(phone, "Message cancelled. Text a radio name to start a new chat.", "SYSTEM")
-                return
+                sms_gateway.send_sms(phone, "Message cancelled. Text a radio name to start a new chat.", "SYSTEM", update_route=False)
+            return
 
-        # ── Active route exists ──
+        # ── Processing commands & Active route ──
+        if txt_cmd == "ENDCONVO":
+            sms_gateway.routing_table.pop(phone, None)
+            sms_gateway.save_routes()
+            sms_sessions.pop(phone, None)
+            sms_gateway.send_sms(phone, "Chat ended. Text a radio name anytime to start a new one.", "SYSTEM", update_route=False)
+            return
+            
+        if txt_cmd == "MENU":
+            sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM", update_route=False)
+            return
+
         if target:
-            if txt_cmd == "ENDCONVO":
-                sms_gateway.routing_table.pop(phone, None)
-                sms_gateway.save_routes()
-                sms_sessions.pop(phone, None)
-                sms_gateway.send_sms(phone, "Chat ended. Text a radio name anytime to start a new one.", "SYSTEM")
-                return
-            if txt_cmd == "MENU":
-                sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
-                return
-
-            # Forward the message
+            # Active route exists, forward the message
             sms_quick_cache[target] = {'phone': phone, 'time': now}
             sms_sessions[phone] = {'node_id': target, 'last_active': now}
             _send_to_node(phone, target, txt_stripped)
             return
 
-        # ── No active route ──
-
-        # Check if this looks like a shortname (1-4 alphanumeric chars)
+        # ── No active route: Look up shortname ──
         if len(txt_stripped) <= 4 and txt_stripped.isalnum():
             found_id, actual_short, exact = _find_node_by_shortname(txt_stripped)
             if found_id and exact:
@@ -154,22 +153,23 @@ def main():
                 sms_gateway.save_routes()
                 sms_quick_cache[found_id] = {'phone': phone, 'time': now}
                 sms_sessions[phone] = {'node_id': found_id, 'last_active': now}
-                sms_gateway.send_sms(phone, f"Connected to {actual_short}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Connected to {actual_short}! Just type your message and it will be sent to them. Reply ENDCONVO when done.", "SYSTEM", update_route=False)
                 return
-            if found_id and not exact:
+            elif found_id and not exact:
                 # Fuzzy match — ask for confirmation
                 sms_pending_confirm[phone] = {
                     'node_id': found_id,
-                    'message': None,  # No message to send, just connecting
+                    'message': None,  # connect only
                     'short': actual_short,
                     'connect_only': True
                 }
-                sms_gateway.send_sms(phone, f"Did you mean {actual_short}? Reply YES or NO.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Did you mean {actual_short}? Reply YES or NO.", "SYSTEM", update_route=False)
                 return
-            sms_gateway.send_sms(phone, f"Couldn't find a radio named '{txt_stripped}'. Double check the name and try again.", "SYSTEM")
-            return
+            else:
+                sms_gateway.send_sms(phone, f"Couldn't find a radio named '{txt_stripped}'. Double check the name and try again.", "SYSTEM", update_route=False)
+                return
 
-        # Smart guess: returning user — ask for confirmation before sending
+        # ── Smart guess: Returning user ──
         if phone in sms_sessions:
             last_node = sms_sessions[phone].get('node_id')
             if last_node:
@@ -179,11 +179,11 @@ def main():
                     'message': txt_stripped,
                     'short': short
                 }
-                sms_gateway.send_sms(phone, f"Would you like to send that to {short}? Reply YES or NO.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Would you like to send that to {short}? Reply YES or NO.", "SYSTEM", update_route=False)
                 return
 
-        # Truly new user — send the welcome menu
-        sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
+        # ── Truly new user ──
+        sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM", update_route=False)
 
     sms_gateway.callback_on_sms_reply = handle_sms_reply
 

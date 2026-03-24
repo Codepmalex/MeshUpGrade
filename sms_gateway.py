@@ -86,12 +86,13 @@ class AprsIsGateway:
         self.sock = None
         logging.info("APRS-IS SMS Gateway disconnected.")
 
-    def send_sms(self, phone_number, message, original_sender_id):
+    def send_sms(self, phone_number, message, original_sender_id, update_route=True):
         if not self.connected:
             logging.error("APRS SMS Gateway not connected. Cannot send.")
             return False
             
         # Rate limit: wait at least 10 seconds between sends to avoid APRS spam blocking
+        # (Bypass or reduce for systemic notifications if needed, but safe to keep for all)
         now = time.time()
         elapsed = now - self.last_sms_time
         if elapsed < 10:
@@ -102,9 +103,10 @@ class AprsIsGateway:
         # Clean phone number (strip everything but digits and '+')
         clean_phone = re.sub(r'[^\d]', '', phone_number)
         
-        # Save mapping for replies
-        self.routing_table[clean_phone] = original_sender_id
-        self.save_routes()
+        # Save mapping for replies ONLY if this is a real user message (not a "Delivered!" notification)
+        if update_route and original_sender_id != "SYSTEM":
+            self.routing_table[clean_phone] = original_sender_id
+            self.save_routes()
         
         dest_padded = "SMS".ljust(9)
         aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}\n"
