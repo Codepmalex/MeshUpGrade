@@ -188,7 +188,6 @@ def main():
     lon_backup = settings.get("lon", "-74.0060")
     unit = settings.get("unit", "F")
     use_gps = settings.get("use_gps", True)
-    sync_shortname = settings.get("sync_shortname", False)
     sync_ping = settings.get("sync_ping", False)
 
     def get_location(sender_id):
@@ -526,13 +525,9 @@ def main():
     if ip_address:
         logging.info(f"Attempting TCP Connection to {ip_address}...")
         engine.connect_tcp(ip_address)
-        if sync_shortname:
-            threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
     elif settings.get("serial_port"):
         logging.info(f"Attempting Serial Connection to {settings.get('serial_port')}...")
         engine.connect_serial(settings.get("serial_port"))
-        if sync_shortname:
-            threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
     else:
         logging.warning("No connection targets configured! Please set ip or serial_port in settings.json.")
 
@@ -544,24 +539,6 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logging.info("Shutting down headless server...")
-        if sync_shortname and engine.is_connected:
-            try:
-                if engine.interface.getShortName() == "OFF":
-                    logging.info("Node already named OFF. Skipping final reboot sync.")
-                else:
-                    logging.info("Updating short name to OFF before logout...")
-                    time.sleep(1) # Crucial interface settle delay
-                    engine.set_short_name("OFF")
-                    if sync_ping:
-                        logging.info("Waiting 40s for node reboot before final broadcast...")
-                        time.sleep(40)
-                        if not engine.reconnect():
-                            engine.discover_node("OFF")
-                        if engine.is_connected:
-                            engine.send_node_info(short_name="OFF")
-                        time.sleep(2)
-            except Exception as e:
-                logging.error(f"Error during shutdown sync (suppressed): {e}")
         engine.close()
         sys.exit(0)
 

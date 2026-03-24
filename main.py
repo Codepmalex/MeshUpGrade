@@ -45,7 +45,6 @@ def save_settings(settings):
 ## alert_channel   - Channel index for severe weather broadcasts (e.g. "0")
 ## cmd_channel     - Channel index for command broadcasts ("-1" for DM only)
 ## use_signal_test - true or false (auto-reply for ping testing)
-## sync_shortname  - true or false (changes node name to ON/OFF)
 ## sync_ping       - true or false (broadcasts name change to mesh)
 
 """
@@ -224,7 +223,6 @@ def main(page: ft.Page):
         width=200
     )
     use_node_gps = ft.Switch(label="Use Sender's Node GPS (if available)", value=settings.get("use_gps", True))
-    sync_shortname = ft.Switch(label="Sync Node Shortname with Status (ON/OFF)", value=settings.get("sync_shortname", False))
     sync_ping = ft.Switch(label="Broadcast Node Info after Status Change", value=settings.get("sync_ping", False))
 
     def get_location(sender_id):
@@ -608,8 +606,6 @@ def main(page: ft.Page):
             settings["ip"] = ip_address.value
             save_settings(settings)
             update_channels_list()
-            if sync_shortname.value:
-                threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
         page.update()
 
     def connect_serial_click(e):
@@ -620,8 +616,6 @@ def main(page: ft.Page):
             settings["serial_port"] = serial_port.value
             save_settings(settings)
             update_channels_list()
-            if sync_shortname.value:
-                threading.Thread(target=reboot_recovery_task, args=("ON", True), daemon=True).start()
         page.update()
 
     callsign_field = ft.TextField(label="HAM Callsign", value=settings.get("callsign", ""), width=150)
@@ -644,7 +638,6 @@ def main(page: ft.Page):
             "lon": lon_field.value,
             "unit": unit_picker.value,
             "use_gps": use_node_gps.value,
-            "sync_shortname": sync_shortname.value,
             "sync_ping": sync_ping.value,
             "ip": ip_address.value,
             "serial_port": serial_port.value,
@@ -757,7 +750,6 @@ def main(page: ft.Page):
             ft.Divider(),
             ft.Text("Features", size=18),
             use_signal_test,
-            sync_shortname,
             sync_ping,
             ft.Divider(),
             ft.Row([
@@ -890,39 +882,10 @@ def main(page: ft.Page):
 
         def perform_shutdown_sync():
             try:
-                if sync_shortname.value and engine.is_connected:
-                    # Smart Sync check
-                    try:
-                        if engine.interface.getShortName() == "OFF":
-                            logging.info("Node already named OFF. Skipping final reboot sync.")
-                            engine.close()
-                            os._exit(0)
-                    except:
-                        pass
-                        
-                    logging.info("Updating short name to OFF before logout...")
-                    # Settle before command
-                    time.sleep(1)
-                    engine.set_short_name("OFF")
-                    
-                    if sync_ping.value:
-                        logging.info("Waiting 40s for node reboot before final broadcast...")
-                        # 40s wait while node reboots
-                        time.sleep(40)
-                        
-                        if not engine.reconnect():
-                            logging.info("IP may have changed. Attempting discovery for final broadcast...")
-                            engine.discover_node("OFF")
-                        
-                        if engine.is_connected:
-                            engine.send_node_info(short_name="OFF")
-                        time.sleep(2) # Final buffer
-                
                 engine.close()
             except Exception as e:
                 logging.debug(f"Shutdown sync error (suppressed): {e}")
             finally:
-                # Hard exit
                 os._exit(0)
 
         # Start shutdown sync in a background daemon thread
