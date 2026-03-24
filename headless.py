@@ -41,68 +41,95 @@ def main():
     engine = MeshEngine()
     
     sms_gateway = AprsIsGateway()
-    pending_sms = {}
     sms_quick_cache = {}
     sms_sessions = {}  # {phone: {'node_id': ..., 'last_active': timestamp}}
     SMS_SESSION_TTL = 1800  # 30 minutes
 
     MESH_MENU = (
-        "-MeshUpGrade SMS-\n"
-        "To start: send the 4-char node shortname (case-sensitive)\n"
-        "END : End conversation\n"
-        "MENU : Show this menu"
+        "Welcome to MeshUpGrade!\n"
+        "To chat with someone, text their 4-letter radio name.\n"
+        "Reply END to stop chatting.\n"
+        "Reply MENU to see this again."
     )
     
+    def _get_node_shortname(node_id):
+        """Look up a human-readable shortname for a node ID."""
+        if engine.interface and hasattr(engine.interface, 'nodes'):
+            node = engine.interface.nodes.get(node_id)
+            if node:
+                return node.get('user', {}).get('shortName', node_id)
+        return node_id
+
+    def _find_node_by_shortname(name):
+        """Find a node ID by its shortname (case-sensitive)."""
+        if engine.interface and hasattr(engine.interface, 'nodes'):
+            for node_id, node_info in engine.interface.nodes.items():
+                if node_info.get('user', {}).get('shortName') == name:
+                    return node_id
+        return None
+
     def handle_sms_reply(phone, txt, target):
         now = time.time()
         txt_stripped = txt.strip()
         txt_cmd = txt_stripped.upper()
 
-        # If this phone already has a routed session to a node, forward the message
+        # ── Active route exists ──
         if target:
-            # Check if SMSuser wants to end or show menu
             if txt_cmd == "END":
                 sms_gateway.routing_table.pop(phone, None)
                 sms_gateway.save_routes()
                 sms_sessions.pop(phone, None)
-                sms_gateway.send_sms(phone, "Conversation ended.", "SYSTEM")
+                sms_gateway.send_sms(phone, "Chat ended. Text a radio name anytime to start a new one.", "SYSTEM")
                 return
             if txt_cmd == "MENU":
                 sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
                 return
 
-            # Active session — forward the message to the target node
+            # Forward the message
             sms_quick_cache[target] = {'phone': phone, 'time': now}
             sms_sessions[phone] = {'node_id': target, 'last_active': now}
 
             def on_ack(dest):
-                sms_gateway.send_sms(phone, "Message Received.", "SYSTEM")
+                sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
 
             engine.send_dm(target, f"SMS from {phone}:\n{txt_stripped}", ack_callback=on_ack)
             return
-            
-        # No active route — check if this is a shortname to start a conversation
-        # Shortnames are case-sensitive, 1-4 alphanumeric chars
+
+        # ── No active route ──
+
+        # Check if this looks like a shortname (1-4 alphanumeric chars)
         if len(txt_stripped) <= 4 and txt_stripped.isalnum():
-            found_id = None
-            if engine.interface and hasattr(engine.interface, 'nodes'):
-                for node_id, node_info in engine.interface.nodes.items():
-                    if node_info.get('user', {}).get('shortName') == txt_stripped:
-                        found_id = node_id
-                        break
-            
+            found_id = _find_node_by_shortname(txt_stripped)
             if found_id:
                 sms_gateway.routing_table[phone] = found_id
                 sms_gateway.save_routes()
                 sms_quick_cache[found_id] = {'phone': phone, 'time': now}
                 sms_sessions[phone] = {'node_id': found_id, 'last_active': now}
-                sms_gateway.send_sms(phone, f"Beginning conversation with {txt_stripped}. Your next messages will route to them.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Connected to {txt_stripped}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
                 return
-            else:
-                sms_gateway.send_sms(phone, f"Node '{txt_stripped}' not found on mesh.", "SYSTEM")
+            # Might be a shortname typo — tell them
+            sms_gateway.send_sms(phone, f"Couldn't find a radio named '{txt_stripped}'. Double check the name and try again.", "SYSTEM")
+            return
+
+        # Smart guess: returning user — auto-reconnect to their last contact
+        if phone in sms_sessions:
+            last_node = sms_sessions[phone].get('node_id')
+            if last_node:
+                short = _get_node_shortname(last_node)
+                sms_gateway.routing_table[phone] = last_node
+                sms_gateway.save_routes()
+                sms_quick_cache[last_node] = {'phone': phone, 'time': now}
+                sms_sessions[phone]['last_active'] = now
+
+                def on_ack(dest):
+                    sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
+
+                sms_gateway.send_sms(phone, f"Auto-connected to {short}. Sending your message now.", "SYSTEM")
+                time.sleep(2)
+                engine.send_dm(last_node, f"SMS from {phone}:\n{txt_stripped}", ack_callback=on_ack)
                 return
 
-        # Nothing matched — new or expired user gets the MESHmenu
+        # Truly new user — send the welcome menu
         sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
 
     sms_gateway.callback_on_sms_reply = handle_sms_reply
