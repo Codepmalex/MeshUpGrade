@@ -389,13 +389,24 @@ class MeshEngine:
                 threading.Thread(target=flush_msgs, args=(sender, pending), daemon=True).start()
 
         # ACK Tracking interception
-        port = packet.get('decoded', {}).get('portnum')
-        if port == 'ROUTING_APP':
-            routing = packet.get('decoded', {}).get('routing', {})
-            if routing.get('errorReason') == 'NONE':
+        decoded = packet.get('decoded', {})
+        port = decoded.get('portnum')
+        
+        # Log every packet type when we have pending messages to track
+        if self.ack_tracker:
+            logging.info(f"PKT RX: portnum={port}, from={packet.get('fromId')}, tracked={list(self.ack_tracker.keys())}")
+        
+        # Check for routing/ACK packets — portnum can be 'ROUTING_APP' or 4
+        is_routing = (port == 'ROUTING_APP' or port == 4 or str(port) == '4')
+        if is_routing:
+            routing = decoded.get('routing', {})
+            error_reason = routing.get('errorReason', '')
+            logging.info(f"ROUTING PKT: errorReason={error_reason}, routing={routing}")
+            
+            if error_reason == 'NONE' or error_reason == 0:
                 # Try multiple places where the requestId can live
                 req_id = (routing.get('requestId') 
-                          or packet.get('decoded', {}).get('requestId')
+                          or decoded.get('requestId')
                           or packet.get('requestId'))
                 
                 logging.info(f"ACK received: requestId={req_id} (type={type(req_id).__name__}), tracked IDs={list(self.ack_tracker.keys())}")
@@ -405,7 +416,6 @@ class MeshEngine:
                 if req_id in self.ack_tracker:
                     matched_id = req_id
                 else:
-                    # Try matching as int or string
                     for tracked_id in self.ack_tracker:
                         if str(tracked_id) == str(req_id):
                             matched_id = tracked_id
@@ -414,17 +424,17 @@ class MeshEngine:
                 if matched_id is not None:
                     acked_dest = self.ack_tracker[matched_id]['dest_id']
                     ack_callback = self.ack_tracker[matched_id].get('ack_callback')
-                    logging.info(f"ACK matched for msg {matched_id} to {acked_dest}. Clearing all pending retries for this node.")
-                    # Clear ALL pending retries targeting this same destination
+                    logging.info(f"ACK MATCHED for msg {matched_id} to {acked_dest}. Firing callback and clearing retries.")
                     to_remove = [pid for pid, d in self.ack_tracker.items() if d['dest_id'] == acked_dest]
                     for pid in to_remove:
                         del self.ack_tracker[pid]
-                    # Fire the callback if one was registered
                     if ack_callback:
                         try:
                             ack_callback(acked_dest)
                         except Exception as e:
                             logging.error(f"ACK callback error: {e}")
+                else:
+                    logging.warning(f"ACK requestId={req_id} did NOT match any tracked message.")
 
         if self.callback_on_message:
             self.callback_on_message(packet)
