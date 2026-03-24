@@ -35,6 +35,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 INBOX_FILE = "sms_inbox.json"
+NODE_CACHE_FILE = "node_cache.json"
 from pubsub import pub
 
 try:
@@ -89,8 +90,13 @@ class MeshEngine:
         # SMS Offline Inbox
         self.offline_inbox = self._load_inbox()
         
+        # Node Cache
+        self.node_cache = self._load_node_cache()
+        
         self.retry_thread = threading.Thread(target=self._retry_loop, daemon=True)
         self.retry_thread.start()
+        self.node_cache_thread = threading.Thread(target=self._node_cache_loop, daemon=True)
+        self.node_cache_thread.start()
 
     def _load_inbox(self):
         if os.path.exists(INBOX_FILE):
@@ -109,11 +115,51 @@ class MeshEngine:
             logging.error(f"Error saving {INBOX_FILE}: {e}")
 
     def check_inbox(self, dest_id):
-        # Returns list of pending messages and clears them
         messages = self.offline_inbox.pop(dest_id, [])
         if messages:
             self.save_inbox()
         return messages
+
+    def _load_node_cache(self):
+        if os.path.exists(NODE_CACHE_FILE):
+            try:
+                with open(NODE_CACHE_FILE, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading {NODE_CACHE_FILE}: {e}")
+        return {}
+
+    def _save_node_cache(self):
+        try:
+            with open(NODE_CACHE_FILE, 'w') as f:
+                json.dump(self.node_cache, f, indent=2)
+        except Exception as e:
+            logging.error(f"Error saving {NODE_CACHE_FILE}: {e}")
+
+    def refresh_node_cache(self):
+        """Snapshot current interface.nodes into a simplified cache dict."""
+        if not self.interface or not hasattr(self.interface, 'nodes'):
+            return
+        cache = {}
+        for node_id, node_info in self.interface.nodes.items():
+            user = node_info.get('user', {})
+            cache[node_id] = {
+                'shortName': user.get('shortName', ''),
+                'longName': user.get('longName', ''),
+                'hwModel': user.get('hwModel', ''),
+                'lastHeard': node_info.get('lastHeard', 0)
+            }
+        self.node_cache = cache
+        self._save_node_cache()
+        logging.info(f"Node cache refreshed: {len(cache)} nodes saved.")
+
+    def _node_cache_loop(self):
+        """Refresh node cache every 15 minutes."""
+        while True:
+            time.sleep(10)  # Initial delay to let connection establish
+            if self.is_connected:
+                self.refresh_node_cache()
+            time.sleep(890)  # ~15 min total cycle
 
     def _retry_loop(self):
         while True:

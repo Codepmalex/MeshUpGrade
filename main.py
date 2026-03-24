@@ -100,11 +100,28 @@ def main(page: ft.Page):
         return node_id
 
     def _find_node_by_shortname(name):
+        exact = None
+        fuzzy = None
+        fuzzy_short = None
         if engine.interface and hasattr(engine.interface, 'nodes'):
             for node_id, node_info in engine.interface.nodes.items():
-                if node_info.get('user', {}).get('shortName') == name:
-                    return node_id
-        return None
+                sn = node_info.get('user', {}).get('shortName', '')
+                if sn == name:
+                    return node_id, sn, True
+                if sn.lower() == name.lower() and not fuzzy:
+                    fuzzy = node_id
+                    fuzzy_short = sn
+        if not exact and not fuzzy:
+            for node_id, info in engine.node_cache.items():
+                sn = info.get('shortName', '')
+                if sn == name:
+                    return node_id, sn, True
+                if sn.lower() == name.lower() and not fuzzy:
+                    fuzzy = node_id
+                    fuzzy_short = sn
+        if fuzzy:
+            return fuzzy, fuzzy_short, False
+        return None, None, False
 
     def _send_to_node(phone, node_id, message):
         def on_ack(dest):
@@ -129,9 +146,12 @@ def main(page: ft.Page):
                 sms_gateway.save_routes()
                 sms_quick_cache[node_id] = {'phone': phone, 'time': now}
                 sms_sessions[phone] = {'node_id': node_id, 'last_active': now}
-                sms_gateway.send_sms(phone, f"Connected to {pending['short']}. Sending your message now.", "SYSTEM")
-                time.sleep(2)
-                _send_to_node(phone, node_id, pending['message'])
+                if pending.get('connect_only'):
+                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
+                else:
+                    sms_gateway.send_sms(phone, f"Connected to {pending['short']}. Sending your message now.", "SYSTEM")
+                    time.sleep(2)
+                    _send_to_node(phone, node_id, pending['message'])
                 return
             else:
                 sms_gateway.send_sms(phone, "Message cancelled. Text a radio name to start a new chat.", "SYSTEM")
@@ -157,13 +177,22 @@ def main(page: ft.Page):
         # ── No active route ──
 
         if len(txt_stripped) <= 4 and txt_stripped.isalnum():
-            found_id = _find_node_by_shortname(txt_stripped)
-            if found_id:
+            found_id, actual_short, exact = _find_node_by_shortname(txt_stripped)
+            if found_id and exact:
                 sms_gateway.routing_table[phone] = found_id
                 sms_gateway.save_routes()
                 sms_quick_cache[found_id] = {'phone': phone, 'time': now}
                 sms_sessions[phone] = {'node_id': found_id, 'last_active': now}
-                sms_gateway.send_sms(phone, f"Connected to {txt_stripped}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Connected to {actual_short}! Just type your message and it will be sent to them. Reply END when done.", "SYSTEM")
+                return
+            if found_id and not exact:
+                sms_pending_confirm[phone] = {
+                    'node_id': found_id,
+                    'message': None,
+                    'short': actual_short,
+                    'connect_only': True
+                }
+                sms_gateway.send_sms(phone, f"Did you mean {actual_short}? Reply YES or NO.", "SYSTEM")
                 return
             sms_gateway.send_sms(phone, f"Couldn't find a radio named '{txt_stripped}'. Double check the name and try again.", "SYSTEM")
             return
