@@ -47,10 +47,12 @@ def main():
     SMS_SESSION_TTL = 1800  # 30 minutes
 
     MESH_MENU = (
-        "Welcome to MeshUpGrade!\n"
-        "To chat with someone, text their 4-letter radio name.\n"
-        "Reply ENDCONVO to stop chatting.\n"
-        "Reply MENU to see this again."
+        "👋 Welcome to the MeshUpGrade Radio Network!\n\n"
+        "HOW TO MESSAGE SOMEONE:\n"
+        "Just text us the 4-letter name of the radio you want to reach (like 'RACK' or '8b4F').\n\n"
+        "HOW TO END A CHAT:\n"
+        "When you're done chatting, reply with 'ENDCONVO' to safely disconnect.\n\n"
+        "Reply 'MENU' to see this help message anytime."
     )
     
     def _get_node_shortname(node_id):
