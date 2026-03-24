@@ -88,7 +88,7 @@ def main(page: ft.Page):
     MESH_MENU = (
         "Welcome to MeshUpGrade!\n"
         "To chat with someone, text their 4-letter radio name.\n"
-        "Reply END to stop chatting.\n"
+        "Reply ENDCONVO to stop chatting.\n"
         "Reply MENU to see this again."
     )
 
@@ -159,7 +159,7 @@ def main(page: ft.Page):
 
         # ── Active route exists ──
         if target:
-            if txt_cmd == "END":
+            if txt_cmd == "ENDCONVO":
                 sms_gateway.routing_table.pop(phone, None)
                 sms_gateway.save_routes()
                 sms_sessions.pop(phone, None)
