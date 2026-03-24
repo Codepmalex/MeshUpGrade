@@ -82,42 +82,61 @@ def main(page: ft.Page):
     sms_gateway = AprsIsGateway()
     pending_sms = {}
     sms_quick_cache = {}
+    sms_sessions = {}
+    SMS_SESSION_TTL = 1800
+
+    MESH_MENU = (
+        "-MeshUpGrade SMS-\n"
+        "To start: send the 4-char node shortname (case-sensitive)\n"
+        "END : End conversation\n"
+        "MENU : Show this menu"
+    )
     
     def handle_sms_reply(phone, txt, target):
+        now = time.time()
+        txt_stripped = txt.strip()
+        txt_cmd = txt_stripped.upper()
+
         if target:
-            sms_quick_cache[target] = {'phone': phone, 'time': time.time()}
-            engine.send_dm(target, f"SMS from {phone}:\n{txt}")
+            if txt_cmd == "END":
+                sms_gateway.routing_table.pop(phone, None)
+                sms_gateway.save_routes()
+                sms_sessions.pop(phone, None)
+                sms_gateway.send_sms(phone, "Conversation ended.", "SYSTEM")
+                return
+            if txt_cmd == "MENU":
+                sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
+                return
+
+            sms_quick_cache[target] = {'phone': phone, 'time': now}
+            sms_sessions[phone] = {'node_id': target, 'last_active': now}
+
+            def on_ack(dest):
+                sms_gateway.send_sms(phone, "Message Received.", "SYSTEM")
+
+            engine.send_dm(target, f"SMS from {phone}:\n{txt_stripped}", ack_callback=on_ack)
             return
             
-        txt_upper = txt.strip().upper()
-        # If the user is replying with what looks like a 4-character short name
-        if len(txt_upper) <= 4 and txt_upper.isalnum():
+        if len(txt_stripped) <= 4 and txt_stripped.isalnum():
             found_id = None
             if engine.interface and hasattr(engine.interface, 'nodes'):
                 for node_id, node_info in engine.interface.nodes.items():
-                    if node_info.get('user', {}).get('shortName') == txt_upper:
+                    if node_info.get('user', {}).get('shortName') == txt_stripped:
                         found_id = node_id
                         break
             
             if found_id:
-                # Link established
                 sms_gateway.routing_table[phone] = found_id
                 sms_gateway.save_routes()
-                sms_quick_cache[found_id] = {'phone': phone, 'time': time.time()}
-                
-                # Was there a pending message waiting for this link?
-                if phone in pending_sms:
-                    old_msg = pending_sms.pop(phone)
-                    engine.send_dm(found_id, f"SMS from {phone}:\n{old_msg}")
-                    sms_gateway.send_sms(phone, f"Linked to Node {txt_upper}. Message delivered.", "SYSTEM")
-                else:
-                    sms_gateway.send_sms(phone, f"Linked to Node {txt_upper}.", "SYSTEM")
+                sms_quick_cache[found_id] = {'phone': phone, 'time': now}
+                sms_sessions[phone] = {'node_id': found_id, 'last_active': now}
+                sms_gateway.send_sms(phone, f"Beginning conversation with {txt_stripped}. Your next messages will route to them.", "SYSTEM")
+                return
             else:
-                sms_gateway.send_sms(phone, f"Node '{txt_upper}' not found on the mesh. Please check the spelling and try again.", "SYSTEM")
-        else:
-            # We don't have a route, and this doesn't look like a short name link attempt.
-            pending_sms[phone] = txt
-            sms_gateway.send_sms(phone, "MeshUpGrade: Unknown route. Reply with the EXACT 4-character short name of the node you want to message.", "SYSTEM")
+                sms_gateway.send_sms(phone, f"Node '{txt_stripped}' not found on mesh.", "SYSTEM")
+                return
+
+        sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")
 
     sms_gateway.callback_on_sms_reply = handle_sms_reply
     

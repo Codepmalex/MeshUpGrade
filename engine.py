@@ -122,22 +122,20 @@ class MeshEngine:
                 continue
             
             now = time.time()
-            # Copy items mapping to avoid dictionary changed size during iteration error
             for pkt_id, data in list(self.ack_tracker.items()):
                 if now - data['last_sent'] >= self.retry_cooldown:
                     if data['retries'] < self.max_retries:
                         logging.warning(f"No ACK for direct message to {data['dest_id']}. Retrying ({data['retries'] + 1}/{self.max_retries})...")
                         try:
-                            # Re-send the text directly
                             new_packet = self.interface.sendText(data['message'], destinationId=data['dest_id'])
                             new_id = new_packet.id
                             
-                            # Create new tracked entry and delete old one
                             self.ack_tracker[new_id] = {
                                 'dest_id': data['dest_id'],
                                 'message': data['message'],
                                 'retries': data['retries'] + 1,
-                                'last_sent': now
+                                'last_sent': now,
+                                'ack_callback': data.get('ack_callback')
                             }
                             del self.ack_tracker[pkt_id]
                         except BaseException as e:
@@ -340,17 +338,27 @@ class MeshEngine:
         port = packet.get('decoded', {}).get('portnum')
         if port == 'ROUTING_APP':
             routing = packet.get('decoded', {}).get('routing', {})
-            logging.info(f"DEBUG AL: Routing Packet rx: {packet}")
             if routing.get('errorReason') == 'NONE':
                 req_id = routing.get('requestId') or packet.get('decoded', {}).get('requestId')
                 if req_id in self.ack_tracker:
-                    logging.info(f"Received ACK for msg {req_id}. Delivery confirmed.")
-                    del self.ack_tracker[req_id]
+                    acked_dest = self.ack_tracker[req_id]['dest_id']
+                    ack_callback = self.ack_tracker[req_id].get('ack_callback')
+                    logging.info(f"Received ACK for msg {req_id} to {acked_dest}. Clearing all pending retries for this node.")
+                    # Clear ALL pending retries targeting this same destination
+                    to_remove = [pid for pid, d in self.ack_tracker.items() if d['dest_id'] == acked_dest]
+                    for pid in to_remove:
+                        del self.ack_tracker[pid]
+                    # Fire the callback if one was registered
+                    if ack_callback:
+                        try:
+                            ack_callback(acked_dest)
+                        except Exception as e:
+                            logging.error(f"ACK callback error: {e}")
 
         if self.callback_on_message:
             self.callback_on_message(packet)
 
-    def send_dm(self, dest_id, message):
+    def send_dm(self, dest_id, message, ack_callback=None):
         if not self.interface:
             return False
         
@@ -366,7 +374,8 @@ class MeshEngine:
                     'dest_id': dest_id,
                     'message': message,
                     'retries': 0,
-                    'last_sent': time.time()
+                    'last_sent': time.time(),
+                    'ack_callback': ack_callback
                 }
             return True
         except Exception as e:
