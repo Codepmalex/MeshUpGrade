@@ -82,6 +82,7 @@ def main(page: ft.Page):
     sms_gateway = AprsIsGateway()
     sms_quick_cache = {}
     sms_sessions = {}
+    sms_pending_confirm = {}
     SMS_SESSION_TTL = 1800
 
     MESH_MENU = (
@@ -105,11 +106,38 @@ def main(page: ft.Page):
                     return node_id
         return None
 
+    def _send_to_node(phone, node_id, message):
+        def on_ack(dest):
+            sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
+
+        def on_fail(dest):
+            sms_gateway.send_sms(phone, "Not delivered yet. We'll text you 'Delivered!' once they receive it.", "SYSTEM")
+
+        engine.send_dm(node_id, f"SMS from {phone}:\n{message}", ack_callback=on_ack, fail_callback=on_fail)
+
     def handle_sms_reply(phone, txt, target):
         now = time.time()
         txt_stripped = txt.strip()
         txt_cmd = txt_stripped.upper()
 
+        # ── Check for pending yes/no confirmation ──
+        if phone in sms_pending_confirm:
+            pending = sms_pending_confirm.pop(phone)
+            if txt_cmd in ("YES", "Y"):
+                node_id = pending['node_id']
+                sms_gateway.routing_table[phone] = node_id
+                sms_gateway.save_routes()
+                sms_quick_cache[node_id] = {'phone': phone, 'time': now}
+                sms_sessions[phone] = {'node_id': node_id, 'last_active': now}
+                sms_gateway.send_sms(phone, f"Connected to {pending['short']}. Sending your message now.", "SYSTEM")
+                time.sleep(2)
+                _send_to_node(phone, node_id, pending['message'])
+                return
+            else:
+                sms_gateway.send_sms(phone, "Message cancelled. Text a radio name to start a new chat.", "SYSTEM")
+                return
+
+        # ── Active route exists ──
         if target:
             if txt_cmd == "END":
                 sms_gateway.routing_table.pop(phone, None)
@@ -123,12 +151,10 @@ def main(page: ft.Page):
 
             sms_quick_cache[target] = {'phone': phone, 'time': now}
             sms_sessions[phone] = {'node_id': target, 'last_active': now}
-
-            def on_ack(dest):
-                sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
-
-            engine.send_dm(target, f"SMS from {phone}:\n{txt_stripped}", ack_callback=on_ack)
+            _send_to_node(phone, target, txt_stripped)
             return
+
+        # ── No active route ──
 
         if len(txt_stripped) <= 4 and txt_stripped.isalnum():
             found_id = _find_node_by_shortname(txt_stripped)
@@ -142,21 +168,17 @@ def main(page: ft.Page):
             sms_gateway.send_sms(phone, f"Couldn't find a radio named '{txt_stripped}'. Double check the name and try again.", "SYSTEM")
             return
 
+        # Smart guess: returning user — ask for confirmation
         if phone in sms_sessions:
             last_node = sms_sessions[phone].get('node_id')
             if last_node:
                 short = _get_node_shortname(last_node)
-                sms_gateway.routing_table[phone] = last_node
-                sms_gateway.save_routes()
-                sms_quick_cache[last_node] = {'phone': phone, 'time': now}
-                sms_sessions[phone]['last_active'] = now
-
-                def on_ack(dest):
-                    sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
-
-                sms_gateway.send_sms(phone, f"Auto-connected to {short}. Sending your message now.", "SYSTEM")
-                time.sleep(2)
-                engine.send_dm(last_node, f"SMS from {phone}:\n{txt_stripped}", ack_callback=on_ack)
+                sms_pending_confirm[phone] = {
+                    'node_id': last_node,
+                    'message': txt_stripped,
+                    'short': short
+                }
+                sms_gateway.send_sms(phone, f"Would you like to send that to {short}? Reply YES or NO.", "SYSTEM")
                 return
 
         sms_gateway.send_sms(phone, MESH_MENU, "SYSTEM")

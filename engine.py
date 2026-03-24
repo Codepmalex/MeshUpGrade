@@ -135,7 +135,8 @@ class MeshEngine:
                                 'message': data['message'],
                                 'retries': data['retries'] + 1,
                                 'last_sent': now,
-                                'ack_callback': data.get('ack_callback')
+                                'ack_callback': data.get('ack_callback'),
+                                'fail_callback': data.get('fail_callback')
                             }
                             del self.ack_tracker[pkt_id]
                         except BaseException as e:
@@ -146,6 +147,13 @@ class MeshEngine:
                             self.offline_inbox[data['dest_id']] = []
                         self.offline_inbox[data['dest_id']].append(data['message'])
                         self.save_inbox()
+                        # Fire fail callback if registered
+                        fail_cb = data.get('fail_callback')
+                        if fail_cb:
+                            try:
+                                fail_cb(data['dest_id'])
+                            except Exception as e:
+                                logging.error(f"Fail callback error: {e}")
                         del self.ack_tracker[pkt_id]
 
     @property
@@ -358,7 +366,7 @@ class MeshEngine:
         if self.callback_on_message:
             self.callback_on_message(packet)
 
-    def send_dm(self, dest_id, message, ack_callback=None):
+    def send_dm(self, dest_id, message, ack_callback=None, fail_callback=None):
         if not self.interface:
             return False
         
@@ -375,7 +383,8 @@ class MeshEngine:
                     'message': message,
                     'retries': 0,
                     'last_sent': time.time(),
-                    'ack_callback': ack_callback
+                    'ack_callback': ack_callback,
+                    'fail_callback': fail_callback
                 }
             return True
         except Exception as e:
