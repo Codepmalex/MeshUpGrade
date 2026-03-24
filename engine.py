@@ -451,7 +451,9 @@ class MeshEngine:
         try:
             packet = self.interface.sendText(message, destinationId=dest_id, wantAck=True)
             if hasattr(packet, 'id'):
-                self.ack_tracker[packet.id] = {
+                pkt_id = packet.id
+                logging.info(f"sendText returned MeshPacket with id={pkt_id} (type={type(pkt_id).__name__})")
+                self.ack_tracker[pkt_id] = {
                     'dest_id': dest_id,
                     'message': message,
                     'retries': 0,
@@ -459,6 +461,8 @@ class MeshEngine:
                     'ack_callback': ack_callback,
                     'fail_callback': fail_callback
                 }
+            else:
+                logging.warning(f"sendText returned object without 'id' attribute: {packet}")
             return True
         except Exception as e:
             logging.error(f"Failed to send DM: {e}")

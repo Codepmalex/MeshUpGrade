@@ -124,11 +124,14 @@ def main(page: ft.Page):
 
     def _send_to_node(phone, node_id, message):
         def on_ack(dest):
-            sms_gateway.send_sms(phone, "Delivered!", "SYSTEM")
+            logging.info(f"ACK CALLBACK FIRED for {phone} to node {node_id}")
+            sms_gateway.send_sms(phone, "Delivered!", "SYSTEM", update_route=False)
 
         def on_fail(dest):
-            sms_gateway.send_sms(phone, "Not delivered yet. We'll text you 'Delivered!' once they receive it.", "SYSTEM")
+            logging.info(f"FAIL CALLBACK FIRED for {phone} to node {node_id}")
+            sms_gateway.send_sms(phone, "Not delivered yet. We'll text you 'Delivered!' once they receive it.", "SYSTEM", update_route=False)
 
+        logging.info(f"Sending SMS via mesh to {node_id}: {message}")
         engine.send_dm(node_id, f"SMS from {phone}:\n{message}", ack_callback=on_ack, fail_callback=on_fail)
 
     def handle_sms_reply(phone, txt, target):
