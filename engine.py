@@ -393,11 +393,28 @@ class MeshEngine:
         if port == 'ROUTING_APP':
             routing = packet.get('decoded', {}).get('routing', {})
             if routing.get('errorReason') == 'NONE':
-                req_id = routing.get('requestId') or packet.get('decoded', {}).get('requestId')
+                # Try multiple places where the requestId can live
+                req_id = (routing.get('requestId') 
+                          or packet.get('decoded', {}).get('requestId')
+                          or packet.get('requestId'))
+                
+                logging.info(f"ACK received: requestId={req_id} (type={type(req_id).__name__}), tracked IDs={list(self.ack_tracker.keys())}")
+                
+                # Match by value — handle int/string mismatches
+                matched_id = None
                 if req_id in self.ack_tracker:
-                    acked_dest = self.ack_tracker[req_id]['dest_id']
-                    ack_callback = self.ack_tracker[req_id].get('ack_callback')
-                    logging.info(f"Received ACK for msg {req_id} to {acked_dest}. Clearing all pending retries for this node.")
+                    matched_id = req_id
+                else:
+                    # Try matching as int or string
+                    for tracked_id in self.ack_tracker:
+                        if str(tracked_id) == str(req_id):
+                            matched_id = tracked_id
+                            break
+                
+                if matched_id is not None:
+                    acked_dest = self.ack_tracker[matched_id]['dest_id']
+                    ack_callback = self.ack_tracker[matched_id].get('ack_callback')
+                    logging.info(f"ACK matched for msg {matched_id} to {acked_dest}. Clearing all pending retries for this node.")
                     # Clear ALL pending retries targeting this same destination
                     to_remove = [pid for pid, d in self.ack_tracker.items() if d['dest_id'] == acked_dest]
                     for pid in to_remove:
