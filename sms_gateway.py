@@ -20,6 +20,7 @@ class AprsIsGateway:
         self.should_run = False
         
         self.callback_on_sms_reply = callback_on_sms_reply
+        self.last_sms_time = 0  # Rate limit tracker
         # Map phone number to original sender Node ID to route replies
         self.routing_table = self._load_routes()
 
@@ -90,6 +91,14 @@ class AprsIsGateway:
             logging.error("APRS SMS Gateway not connected. Cannot send.")
             return False
             
+        # Rate limit: wait at least 7 seconds between sends to avoid APRS spam blocking
+        now = time.time()
+        elapsed = now - self.last_sms_time
+        if elapsed < 7:
+            wait = 7 - elapsed
+            logging.info(f"SMS rate limit: waiting {wait:.1f}s before sending...")
+            time.sleep(wait)
+        
         # Clean phone number (strip everything but digits and '+')
         clean_phone = re.sub(r'[^\d]', '', phone_number)
         
@@ -97,15 +106,12 @@ class AprsIsGateway:
         self.routing_table[clean_phone] = original_sender_id
         self.save_routes()
         
-        # Aprs format: CALLSIGN>APRS,TCPIP*:>SMS       :@1234567890 Message{01
-        # The 'SMS' addressee field must be exactly 9 chars padded with spaces
         dest_padded = "SMS".ljust(9)
-        
-        # We need a message ID at the end to get an ACK from aprs.wiki, but for now just sending it fire-and-forget
         aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}\n"
         
         try:
             self.sock.send(aprs_packet.encode("utf-8"))
+            self.last_sms_time = time.time()
             logging.info(f"Sent SMS via APRS to {clean_phone}")
             return True
         except Exception as e:
