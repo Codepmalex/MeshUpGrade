@@ -92,11 +92,13 @@ def main():
         """Send a message to a mesh node on behalf of an SMS user, with delivery/fail notifications."""
         def on_ack(dest):
             logging.info(f"ACK CALLBACK FIRED for {phone} to node {node_id}")
-            sms_gateway.send_sms(phone, "Delivered!", "SYSTEM", update_route=False)
+            short = _get_node_shortname(node_id) or node_id
+            sms_gateway.send_sms(phone, f"Delivered to {short}!", "SYSTEM", update_route=False)
 
         def on_fail(dest):
             logging.info(f"FAIL CALLBACK FIRED for {phone} to node {node_id}")
-            sms_gateway.send_sms(phone, "Not delivered yet. We'll text you 'Delivered!' once they receive it.", "SYSTEM", update_route=False)
+            short = _get_node_shortname(node_id) or node_id
+            sms_gateway.send_sms(phone, f"Not delivered yet. We'll text you 'Delivered to {short}!' once they receive it.", "SYSTEM", update_route=False)
 
         logging.info(f"Sending SMS via mesh to {node_id}: {message}")
         engine.send_dm(node_id, f"SMS from {phone}:\n{message}", ack_callback=on_ack, fail_callback=on_fail)
