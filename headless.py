@@ -58,6 +58,17 @@ def main():
                 return node.get('user', {}).get('shortName', node_id)
         return node_id
 
+    def on_offline_message_acked(dest_id, message_text):
+        if message_text.startswith("SMS from "):
+            try:
+                phone = message_text.split("SMS from ")[1].split(":\n")[0].strip()
+                short = _get_node_shortname(dest_id) or dest_id
+                sms_gateway.send_sms(phone, f"Prior message finally delivered to {short}!", "SYSTEM", update_route=False)
+            except Exception as e:
+                logging.error(f"Error in offline ACK parsing: {e}")
+
+    engine.global_ack_callback = on_offline_message_acked
+
     def _find_node_by_shortname(name):
         """Find a node ID by shortname. Returns (node_id, actual_shortname, exact_match)."""
         exact = None

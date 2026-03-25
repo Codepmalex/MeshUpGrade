@@ -393,7 +393,13 @@ class MeshEngine:
                 # We spin up a thread so we don't block the packet reception thread
                 def flush_msgs(dest, msgs):
                     for m in msgs:
-                        self.send_dm(dest, m)
+                        def make_ack(msg_text):
+                            def on_ack(acked_dest):
+                                if hasattr(self, 'global_ack_callback') and self.global_ack_callback:
+                                    self.global_ack_callback(acked_dest, msg_text)
+                            return on_ack
+                            
+                        self.send_dm(dest, m, ack_callback=make_ack(m))
                         time.sleep(5) # Space out bursting
                 threading.Thread(target=flush_msgs, args=(sender, pending), daemon=True).start()
 

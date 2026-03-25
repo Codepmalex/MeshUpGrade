@@ -85,12 +85,7 @@ def main(page: ft.Page):
     SMS_SESSION_TTL = 1800
 
     MESH_MENU = (
-        "👋 Welcome to the MeshUpGrade Radio Network!\n\n"
-        "HOW TO MESSAGE SOMEONE:\n"
-        "Just text us the 4-letter name of the radio you want to reach (like 'RACK' or '8b4F').\n\n"
-        "HOW TO END A CHAT:\n"
-        "When you're done chatting, reply with 'ENDCONVO' to safely disconnect.\n\n"
-        "Reply 'MENU' to see this help message anytime."
+        "Welcome to the MeshUpGrade Radio Network! Just text us the 1, 2, 3, or 4-letter name of the radio you want to reach. When you're done chatting, reply ENDCONVO to stop the current convosation. Reply MENU to see this message again"
     )
 
     def _get_node_shortname(node_id):
@@ -99,6 +94,17 @@ def main(page: ft.Page):
             if node:
                 return node.get('user', {}).get('shortName', node_id)
         return node_id
+
+    def on_offline_message_acked(dest_id, message_text):
+        if message_text.startswith("SMS from "):
+            try:
+                phone = message_text.split("SMS from ")[1].split(":\n")[0].strip()
+                short = _get_node_shortname(dest_id) or dest_id
+                sms_gateway.send_sms(phone, f"Prior message finally delivered to {short}!", "SYSTEM", update_route=False)
+            except Exception as e:
+                logging.error(f"Error in offline ACK parsing: {e}")
+
+    engine.global_ack_callback = on_offline_message_acked
 
     def _find_node_by_shortname(name):
         exact = None
