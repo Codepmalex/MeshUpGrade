@@ -109,12 +109,17 @@ class AprsIsGateway:
             self.save_routes()
         
         dest_padded = "SMS".ljust(9)
-        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}\n"
+        
+        # APRS network deduplicates identical messages. By appending an {ID, we force it to route.
+        # We can use a random 3-digit ID or just the last 3 digits of time.
+        msg_id = str(int(time.time() * 10))[-3:]
+        
+        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}{{{msg_id}}\n"
         
         try:
             self.sock.send(aprs_packet.encode("utf-8"))
             self.last_sms_time = time.time()
-            logging.info(f"Sent SMS via APRS to {clean_phone}")
+            logging.info(f"Sent SMS via APRS to {clean_phone} (msg_id={msg_id})")
             return True
         except Exception as e:
             logging.error(f"Failed to send APRS SMS: {e}")
