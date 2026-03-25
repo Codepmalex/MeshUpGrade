@@ -114,7 +114,7 @@ class AprsIsGateway:
         # We can use a random 3-digit ID or just the last 3 digits of time.
         msg_id = str(int(time.time() * 10))[-3:]
         
-        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}{{{msg_id}}\n"
+        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}" + "{" + msg_id + "\n"
         
         try:
             self.sock.send(aprs_packet.encode("utf-8"))
