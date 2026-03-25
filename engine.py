@@ -172,19 +172,28 @@ class MeshEngine:
                 if now - data['last_sent'] >= self.retry_cooldown:
                     if data['retries'] < self.max_retries:
                         logging.warning(f"No ACK for direct message to {data['dest_id']}. Retrying ({data['retries'] + 1}/{self.max_retries})...")
+                        # Update state immediately so we don't spam if an error occurs
+                        data['retries'] += 1
+                        data['last_sent'] = now
+                        
                         try:
-                            new_packet = self.interface.sendText(data['message'], destinationId=data['dest_id'])
-                            new_id = new_packet.id
+                            # Explicitly wantAck=True is required for the recipient to reply with routing app ACK
+                            new_packet = self.interface.sendText(data['message'], destinationId=data['dest_id'], wantAck=True)
                             
-                            self.ack_tracker[new_id] = {
-                                'dest_id': data['dest_id'],
-                                'message': data['message'],
-                                'retries': data['retries'] + 1,
-                                'last_sent': now,
-                                'ack_callback': data.get('ack_callback'),
-                                'fail_callback': data.get('fail_callback')
-                            }
-                            del self.ack_tracker[pkt_id]
+                            if hasattr(new_packet, 'id'):
+                                new_id = new_packet.id
+                                logging.info(f"Retry {data['retries']} sent. New packet ID: {new_id}")
+                                self.ack_tracker[new_id] = {
+                                    'dest_id': data['dest_id'],
+                                    'message': data['message'],
+                                    'retries': data['retries'],
+                                    'last_sent': now,
+                                    'ack_callback': data.get('ack_callback'),
+                                    'fail_callback': data.get('fail_callback')
+                                }
+                                del self.ack_tracker[pkt_id]
+                            else:
+                                logging.warning(f"Retry returned object without 'id'. Keeping old ID {pkt_id}")
                         except BaseException as e:
                             logging.error(f"Retry failed (likely offline): {e}")
                     else:
