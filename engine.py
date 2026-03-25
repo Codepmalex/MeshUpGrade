@@ -84,7 +84,7 @@ class MeshEngine:
         
         # SMS Auto-Retry System
         self.ack_tracker = {}
-        self.max_retries = 3
+        self.max_retries = 5
         self.retry_cooldown = 15
         
         # SMS Offline Inbox
