@@ -438,6 +438,12 @@ class MeshEngine:
                 
                 if matched_id is not None:
                     acked_dest = self.ack_tracker[matched_id]['dest_id']
+                    ack_from = packet.get('fromId')
+                    
+                    if ack_from and ack_from != acked_dest:
+                        logging.info(f"Ignoring intermediate hop ACK from {ack_from} (waiting for final ACK from {acked_dest})")
+                        return
+
                     ack_callback = self.ack_tracker[matched_id].get('ack_callback')
                     logging.info(f"ACK MATCHED for msg {matched_id} to {acked_dest}. Firing callback and clearing retries.")
                     to_remove = [pid for pid, d in self.ack_tracker.items() if d['dest_id'] == acked_dest]

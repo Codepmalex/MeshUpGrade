@@ -70,6 +70,7 @@ from reminders import ReminderManager
 from bbs_manager import BbsManager
 from sms_contacts import SmsContactsManager
 from ai_chat import AiChatManager
+from aprs_manager import AprsManager
 
 def main(page: ft.Page):
     page.title = "MeshUpGrade"
@@ -269,6 +270,7 @@ def main(page: ft.Page):
     bbs_mgr = BbsManager(engine, send_reply, settings)
     sms_contacts_mgr = SmsContactsManager()
     ai_mgr = AiChatManager(settings)
+    aprs_mgr = AprsManager(engine, send_reply)
 
     def process_command(msg, sender, packet, channel_index=None):
         msg_original = msg.lstrip("/")
@@ -276,8 +278,11 @@ def main(page: ft.Page):
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : APRS Texting\nAI : AI Chat\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : Texting\nAPRS : APRS Tools\nAI : AI Chat\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
+            return
+
+        if aprs_mgr.handle_command(sender, msg_original):
             return
 
         if msg == "INBOX":
@@ -466,8 +471,13 @@ def main(page: ft.Page):
 
 
     def on_message_received(packet):
-        if 'decoded' in packet and packet['decoded'].get('portnum') == 'TEXT_MESSAGE_APP':
-            msg = packet['decoded']['payload'].decode('utf-8').strip()
+        if 'decoded' in packet:
+            portnum = packet['decoded'].get('portnum')
+            if portnum in ('POSITION_APP', 3, '3'):
+                aprs_mgr.process_mesh_position(packet.get('fromId'), None, None)
+            
+            if portnum == 'TEXT_MESSAGE_APP':
+                msg = packet['decoded']['payload'].decode('utf-8').strip()
             sender = packet['fromId']
             if packet.get('toId') != '^all':
                 logging.info(f"DM from {sender}: {msg}")
@@ -598,12 +608,25 @@ def main(page: ft.Page):
         status_text.value = "Status: Reconnecting..."
         page.update()
         
-        if engine.reconnect():
-            logging.info("Reconnected successfully. Sending node info broadcast.")
-            engine.send_node_info(short_name=short_name)
-            status_text.value = f"Status: Connected ({engine.last_conn_type.upper()}) - Sync OK"
-        else:
-            logging.warning(f"Initial reconnect failed. Searching network for '{short_name}'...")
+        reconnected = False
+        for attempt in range(5):
+            status_text.value = f"Status: Reconnecting... (Attempt {attempt+1}/5)"
+            page.update()
+            
+            if engine.reconnect():
+                logging.info(f"Reconnected successfully on attempt {attempt+1}. Sending node info broadcast.")
+                engine.send_node_info(short_name=short_name)
+                status_text.value = f"Status: Connected ({engine.last_conn_type.upper()}) - Sync OK"
+                reconnected = True
+                break
+                
+            logging.info(f"Reconnect attempt {attempt+1}/5 failed. Waiting 30s...")
+            status_text.value = f"Status: Reconn Failed {attempt+1}/5. Wait 30s..."
+            page.update()
+            time.sleep(30)
+            
+        if not reconnected:
+            logging.warning(f"All 5 reconnect attempts failed. Searching network for '{short_name}'...")
             status_text.value = f"Status: Searching network for {short_name}..."
             page.update()
             
