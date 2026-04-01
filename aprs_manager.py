@@ -250,7 +250,7 @@ class AprsManager:
             # Message formatting
             target_padded = target_call.ljust(9)
             msg_id = str(int(time.time() * 10))[-3:]
-            aprs_pkt = f"{full_source}>APRS,TCPIP*::{target_padded}:{text_to_send}{{{msg_id}}\n"
+            aprs_pkt = f"{full_source}>APRS,TCPIP*::{target_padded}:{text_to_send}" + "{" + msg_id + "\n"
             
             self.send_reply(sender, f"Sending APRS message to {target_call}...")
             
