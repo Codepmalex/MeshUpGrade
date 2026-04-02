@@ -430,23 +430,24 @@ def main():
     def on_message_received(packet):
         if 'decoded' in packet:
             portnum = packet['decoded'].get('portnum')
+            sender = packet['fromId']
+            
             if portnum in ('POSITION_APP', 3, '3'):
-                aprs_mgr.process_mesh_position(packet.get('fromId'), None, None)
+                aprs_mgr.process_mesh_position(sender, None, None)
             
             if portnum == 'TEXT_MESSAGE_APP':
                 msg = packet['decoded']['payload'].decode('utf-8').strip()
-            sender = packet['fromId']
-            if packet.get('toId') != '^all':
-                logging.info(f"DM from {sender}: {msg}")
-                process_command(msg, sender, packet)
-            else:
-                # Handle Broadcasts on the Command Channel
-                cmd_chan_idx = int(settings.get("cmd_channel", -1))
-                if packet.get('channel') == cmd_chan_idx and cmd_chan_idx != -1:
-                    logging.info(f"Command Channel broadcast from {sender}: {msg}")
-                    process_command(msg, sender, packet, channel_index=cmd_chan_idx)
+                if packet.get('toId') != '^all':
+                    logging.info(f"DM from {sender}: {msg}")
+                    process_command(msg, sender, packet)
                 else:
-                    logging.info(f"Ignored broadcast from {sender}")
+                    # Handle Broadcasts on the Command Channel
+                    cmd_chan_idx = int(settings.get("cmd_channel", -1))
+                    if packet.get('channel') == cmd_chan_idx and cmd_chan_idx != -1:
+                        logging.info(f"Command Channel broadcast from {sender}: {msg}")
+                        process_command(msg, sender, packet, channel_index=cmd_chan_idx)
+                    else:
+                        logging.info(f"Ignored broadcast from {sender}")
 
     engine.callback_on_message = on_message_received
 

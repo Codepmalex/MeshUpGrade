@@ -436,7 +436,7 @@ class AprsManager:
             icon_class = icon_in[0]
             icon_id = icon_in[1]
             
-        aprs_pkt = f"{full_source}>APRS,TCPIP*:!{lat_str}{icon_class}{lon_str}{icon_id}MeshUpGrade\n"
+        aprs_pkt = f"{full_source}>APRS,TCPIP*:!{lat_str}{icon_class}{lon_str}{icon_id}Sent from a licensed HAM with Meshtastic using MeshUpGrade (On Github!)\n"
         
         def bg_loc_send():
             success = inject_aprs_packet_and_wait_ack(
