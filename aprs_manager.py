@@ -28,9 +28,11 @@ def convert_to_aprs_coord(lat, lon):
     return lat_str, lon_str
 
 def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=None, timeout=30):
+    import struct
     try:
         logging.info(f"APRS Ephemeral Inject: {packet_str.strip()}")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 5))
         sock.settimeout(5)
         sock.connect(('rotate.aprs2.net', 14580))
         login_call = callsign
