@@ -124,7 +124,12 @@ class AprsManager:
                 rx_sock.settimeout(30)
                 rx_sock.connect(('rotate.aprs2.net', 14580))
                 b_filters = " ".join([f"b/{c}" for c in enabled_users])
-                login = f"user {self.host_call} pass {self.host_pass} vers MeshUpGrade 0.2.0 filter {b_filters}\n"
+                
+                login_call = self.host_call
+                if "-" not in login_call:
+                    login_call += "-15"
+                    
+                login = f"user {login_call} pass {self.host_pass} vers MeshUpGrade 0.2.0 filter {b_filters}\n"
                 rx_sock.send(login.encode('utf-8'))
                 
                 last_rx = time.time()
