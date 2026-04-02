@@ -33,7 +33,10 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5)
         sock.connect(('rotate.aprs2.net', 14580))
-        sock.send(f"user {callsign} pass {passcode} vers MeshUpGrade 0.2.0\n".encode('utf-8'))
+        login_call = callsign
+        if "-" not in login_call:
+            login_call += "-13"
+        sock.send(f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\n".encode('utf-8'))
         
         # Give the server a moment and read the authentication response
         login_resp = ""
@@ -54,8 +57,18 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         sock.send(packet_str.encode('utf-8'))
         
         if not wait_ack_id:
-            # Let the TCP stream flush before resetting the socket
-            time.sleep(1.0)
+            # Explicitly shutdown write tunnel so Android flush occurs cleanly
+            try:
+                sock.shutdown(socket.SHUT_WR)
+            except:
+                pass
+            # Read from the buffer until EOF or 3s timeout to ensure server ingested package
+            sock.settimeout(3.0)
+            try:
+                while sock.recv(1024):
+                    pass
+            except:
+                pass
             sock.close()
             return True
             
