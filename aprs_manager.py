@@ -9,6 +9,11 @@ import time
 APRS_USERS_FILE = "aprs_users.json"
 
 def convert_to_aprs_coord(lat, lon):
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except:
+        return "0000.00N", "00000.00E"
     """Convert decimal degrees to APRS DDMM.mmN/DDDMM.mmE format."""
     lat_deg = int(abs(lat))
     lat_min = (abs(lat) - lat_deg) * 60
