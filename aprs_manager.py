@@ -401,7 +401,9 @@ class AprsManager:
             return
             
         # Compile packet
+        logging.info(f"APRS _send_location: raw lat={lat!r} lon={lon!r} (types: {type(lat).__name__}, {type(lon).__name__})")
         lat_str, lon_str = convert_to_aprs_coord(lat, lon)
+        logging.info(f"APRS coord strings: lat_str={lat_str!r} lon_str={lon_str!r}")
         user_prof = self.users[sender]
         full_source = f"{user_prof['callsign']}-{user_prof['suffix']}"
         icon_class = '/' # Primary Table
@@ -419,6 +421,7 @@ class AprsManager:
         time_str = f"{t.tm_mday:02d}{t.tm_hour:02d}{t.tm_min:02d}z"
         # Use '@' for Timestamped Position WITH Messaging to force packet uniqueness and beat duplicate filters!
         aprs_pkt = f"{full_source}>APRS,TCPIP*:@" + time_str + f"{lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\r\n"
+        logging.info(f"APRS final packet: {aprs_pkt.strip()!r}")
         
         def bg_loc_send():
             success = inject_aprs_packet_and_wait_ack(
@@ -428,7 +431,7 @@ class AprsManager:
             )
             if manual:
                 if success:
-                    self.send_reply(sender, "APRS Location sent successfully to aprs.fi!")
+                    self.send_reply(sender, f"APRS Location sent! Packet: {aprs_pkt.strip()}")
                 else:
                     self.send_reply(sender, "APRS Location failed to send.")
                     
