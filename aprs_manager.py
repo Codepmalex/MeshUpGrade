@@ -234,7 +234,17 @@ class AprsManager:
                 return True
                 
             if step == 3:
-                state['icon'] = txt_stripped
+                raw_icon = txt_stripped
+                # Sanitize: APRS symbol is always {table_char}{symbol_char}
+                # Valid table chars are '/' (primary) and '\' (alternate)
+                # If user inputs just one char like '[', assume primary table: '/'
+                if len(raw_icon) == 0:
+                    raw_icon = '/['  # default: human/jogger
+                elif len(raw_icon) == 1:
+                    raw_icon = '/' + raw_icon  # prepend primary table
+                elif len(raw_icon) >= 2 and raw_icon[0] not in ('/', '\\'):
+                    raw_icon = '/' + raw_icon[0]  # treat first char as symbol, primary table
+                state['icon'] = raw_icon[:2]  # only keep first 2 chars
                 state['step'] = 4
                 callsign = self._get_callsign_from_longname(sender) or "UNKNOWN"
                 fs_call = f"{callsign}-{state['suffix']}"
@@ -410,12 +420,18 @@ class AprsManager:
         icon_id = '['  # Default Jogger/User
         
         icon_in = user_prof.get('icon', '').strip()
-        if len(icon_in) == 1:
-            icon_class = '/'
-            icon_id = icon_in[0]
-        elif len(icon_in) >= 2:
+        # icon_in should be 2 chars: table_char + symbol_char (e.g. '/b' = primary table, bicycle)
+        # Guard against reversed/bad data from old setups
+        if len(icon_in) >= 2 and icon_in[0] in ('/', '\\'):
             icon_class = icon_in[0]
             icon_id = icon_in[1]
+        elif len(icon_in) >= 1:
+            # single char or bad data: treat as symbol code on primary table
+            icon_class = '/'
+            icon_id = icon_in[0]
+        else:
+            icon_class = '/'
+            icon_id = '['  # default: human/jogger
             
         t = time.gmtime()
         time_str = f"{t.tm_mday:02d}{t.tm_hour:02d}{t.tm_min:02d}z"
