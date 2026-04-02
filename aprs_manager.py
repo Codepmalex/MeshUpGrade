@@ -28,64 +28,31 @@ def convert_to_aprs_coord(lat, lon):
     return lat_str, lon_str
 
 def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=None, timeout=30):
-    import struct
+    import requests
     try:
-        logging.info(f"APRS Ephemeral Inject: {packet_str.strip()}")
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 5))
-        sock.settimeout(5)
-        sock.connect(('rotate.aprs2.net', 14580))
+        logging.info(f"APRS Ephemeral Inject via HTTP: {packet_str.strip()}")
         login_call = callsign
         if "-" not in login_call:
             login_call += "-13"
-        sock.send(f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\r\n".encode('utf-8'))
-        
-        # Give the server a moment and read the authentication response
-        login_resp = ""
-        try:
-            start_l = time.time()
-            while time.time() - start_l < 3:
-                login_resp += sock.recv(512).decode('utf-8', errors='ignore')
-                if "logresp" in login_resp.lower() or "not allowed" in login_resp.lower():
-                    break
-        except socket.timeout:
-            pass
             
-        if "unverified" in login_resp.lower() or "not allowed" in login_resp.lower():
-            logging.error(f"APRS Login rejected: {login_resp.strip()}")
-            sock.close()
-            return False
-
-        sock.send(packet_str.encode('utf-8'))
+        payload = f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\r\n{packet_str}"
+        headers = {'Content-Type': 'application/octet-stream', 'Accept': 'text/plain'}
         
-        if not wait_ack_id:
-            time.sleep(3.0)
-            sock.close()
+        url = "http://rotate.aprs2.net:8080/"
+        resp = requests.post(url, data=payload.encode('utf-8'), headers=headers, timeout=10)
+        
+        if resp.status_code == 200 or resp.status_code == 204:
+            # We don't bother waiting for ACK on stateless HTTP requests since the rx_daemon natively catches ACKs globally.
             return True
+        elif resp.status_code == 403:
+            logging.error("APRS HTTP Login rejected: Invalid passcode")
+            return False
+        else:
+            logging.error(f"APRS HTTP Inject failed with status {resp.status_code}: {resp.text}")
+            return False
             
-        # Wait for ACK
-        sock.settimeout(1.0)
-        end_time = time.time() + timeout
-        buf = ""
-        while time.time() < end_time:
-            try:
-                data = sock.recv(1024).decode('utf-8', errors='ignore')
-                if not data: break
-                buf += data
-                while '\n' in buf:
-                    line, buf = buf.split('\n', 1)
-                    if f"ack{wait_ack_id}" in line.lower():
-                        sock.close()
-                        return True
-                    if f"rej{wait_ack_id}" in line.lower():
-                        sock.close()
-                        return False
-            except socket.timeout:
-                continue
-        sock.close()
-        return False
     except Exception as e:
-        logging.error(f"APRS Inject failed: {e}")
+        logging.error(f"APRS HTTP Inject Exception: {e}")
         return False
 
 class AprsManager:
