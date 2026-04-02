@@ -28,29 +28,37 @@ def convert_to_aprs_coord(lat, lon):
     return lat_str, lon_str
 
 def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=None, timeout=30):
-    import requests
+    import http.client
     try:
         logging.info(f"APRS Ephemeral Inject via HTTP: {packet_str.strip()}")
         login_call = callsign
         if "-" not in login_call:
             login_call += "-13"
-            
+
         payload = f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\r\n{packet_str}"
-        headers = {'Content-Type': 'application/octet-stream', 'Accept': 'text/plain'}
-        
-        url = "http://rotate.aprs2.net:8080/"
-        resp = requests.post(url, data=payload.encode('utf-8'), headers=headers, timeout=10)
-        
-        if resp.status_code == 200 or resp.status_code == 204:
-            # We don't bother waiting for ACK on stateless HTTP requests since the rx_daemon natively catches ACKs globally.
+        body = payload.encode('utf-8')
+        headers = {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': str(len(body)),
+        }
+
+        conn = http.client.HTTPConnection("rotate.aprs2.net", 8080, timeout=10)
+        conn.request("POST", "/", body=body, headers=headers)
+        resp = conn.getresponse()
+        resp_body = resp.read().decode('utf-8', errors='ignore')
+        conn.close()
+
+        logging.info(f"APRS HTTP status={resp.status}: {resp_body.strip()}")
+
+        if resp.status in (200, 204):
             return True
-        elif resp.status_code == 403:
+        elif resp.status == 403:
             logging.error("APRS HTTP Login rejected: Invalid passcode")
             return False
         else:
-            logging.error(f"APRS HTTP Inject failed with status {resp.status_code}: {resp.text}")
+            logging.error(f"APRS HTTP Inject failed with status {resp.status}: {resp_body}")
             return False
-            
+
     except Exception as e:
         logging.error(f"APRS HTTP Inject Exception: {e}")
         return False
