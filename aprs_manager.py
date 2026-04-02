@@ -85,6 +85,10 @@ class AprsManager:
         self.send_reply = send_reply_func
         self.users = self._load_users()
         self.setup_sessions = {}
+        self.rx_running = False
+        self.bounce_sock = False
+        self.host_call = "NOCALL"
+        self.host_pass = "-1"
         
     def _load_users(self):
         if os.path.exists(APRS_USERS_FILE):
@@ -98,6 +102,101 @@ class AprsManager:
     def _save_users(self):
         with open(APRS_USERS_FILE, 'w') as f:
             json.dump(self.users, f, indent=4)
+        self.bounce_sock = True
+
+    def start_rx_daemon(self, host_call, host_pass):
+        self.host_call = host_call
+        self.host_pass = host_pass
+        if not self.rx_running:
+            self.rx_running = True
+            threading.Thread(target=self._rx_loop, daemon=True).start()
+
+    def _rx_loop(self):
+        while self.rx_running:
+            enabled_users = [f"{v['callsign']}-{v['suffix']}" for v in self.users.values() if v.get('enabled')]
+            if not enabled_users:
+                time.sleep(10)
+                continue
+                
+            rx_sock = None
+            try:
+                rx_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                rx_sock.settimeout(30)
+                rx_sock.connect(('rotate.aprs2.net', 14580))
+                b_filters = " ".join([f"b/{c}" for c in enabled_users])
+                login = f"user {self.host_call} pass {self.host_pass} vers MeshUpGrade 0.2.0 filter {b_filters}\n"
+                rx_sock.send(login.encode('utf-8'))
+                
+                last_rx = time.time()
+                buf = ""
+                
+                self.bounce_sock = False
+                while self.rx_running and not self.bounce_sock:
+                    try:
+                        data = rx_sock.recv(1024).decode('utf-8', errors='ignore')
+                        if not data: break
+                        last_rx = time.time()
+                        buf += data
+                        while '\n' in buf:
+                            line, buf = buf.split('\n', 1)
+                            self._parse_rx(line.strip())
+                    except socket.timeout:
+                        if time.time() - last_rx > 120:
+                            break
+                        try: rx_sock.send(b"#keepalive\n")
+                        except: break
+            except Exception as e:
+                logging.error(f"APRS RX Loop Error: {e}")
+                
+            if rx_sock:
+                try: rx_sock.close()
+                except: pass
+            time.sleep(5)
+
+    def _parse_rx(self, line):
+        if line.startswith("#"): return
+        
+        # Format: N0CALL-1>APRS,TCPIP*::KD9XYZ-9 :Hello world!{123
+        if "::" not in line: return
+        try:
+            head, tail = line.split("::", 1)
+            # Find destination call (9 chars padded)
+            dest_call = tail[:9].strip()
+            payload = tail[10:]
+            
+            target_node_id = None
+            for node_id, prof in self.users.items():
+                if prof.get('enabled') and f"{prof['callsign']}-{prof['suffix']}" == dest_call:
+                    target_node_id = node_id
+                    break
+                    
+            if target_node_id:
+                src_call = head.split(">")[0]
+                
+                if payload.lower().startswith("ack") or payload.lower().startswith("rej"):
+                    return
+                    
+                msg_body = payload
+                msg_id = None
+                if "{" in payload:
+                    msg_body_parts = payload.split("{", 1)
+                    msg_body = msg_body_parts[0]
+                    if len(msg_body_parts) > 1:
+                        msg_id = msg_body_parts[1]
+                    
+                logging.info(f"APRS RX match for {target_node_id}: {msg_body}")
+                self.send_reply(target_node_id, f"APRS from {src_call}: {msg_body}")
+                
+                if msg_id:
+                    ack_pkt = f"{dest_call}>APRS,TCPIP*::{src_call.ljust(9)}:ack{msg_id}\n"
+                    prof = self.users[target_node_id]
+                    threading.Thread(
+                        target=inject_aprs_packet_and_wait_ack, 
+                        args=(prof['callsign'], prof['passcode'], ack_pkt),
+                        daemon=True
+                    ).start()
+        except Exception as e:
+            logging.error(f"APRS Parse Error: {e}")
 
     def _get_callsign_from_longname(self, sender):
         """Extract a ham callsign from a node's longName if present."""
