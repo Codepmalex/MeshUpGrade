@@ -438,7 +438,8 @@ class AprsManager:
             icon_class = icon_in[0]
             icon_id = icon_in[1]
             
-        aprs_pkt = f"{full_source}>APRS,TCPIP*:!{lat_str}{icon_class}{lon_str}{icon_id}Sent from a licensed HAM with Meshtastic using MeshUpGrade (On Github!)\n"
+        # APRS comment max is strictly 43 characters. We use '=' to indicate that this node supports incoming Messages!
+        aprs_pkt = f"{full_source}>APRS,TCPIP*:={lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\n"
         
         def bg_loc_send():
             success = inject_aprs_packet_and_wait_ack(
