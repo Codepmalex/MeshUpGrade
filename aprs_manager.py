@@ -36,7 +36,7 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         login_call = callsign
         if "-" not in login_call:
             login_call += "-13"
-        sock.send(f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\n".encode('utf-8'))
+        sock.send(f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\r\n".encode('utf-8'))
         
         # Give the server a moment and read the authentication response
         login_resp = ""
@@ -379,7 +379,7 @@ class AprsManager:
             # Message formatting
             target_padded = target_call.ljust(9)
             msg_id = str(int(time.time() * 10))[-3:]
-            aprs_pkt = f"{full_source}>APRS,TCPIP*::{target_padded}:{text_to_send}" + "{" + msg_id + "\n"
+            aprs_pkt = f"{full_source}>APRS,TCPIP*::{target_padded}:{text_to_send}" + "{" + msg_id + "\r\n"
             
             self.send_reply(sender, f"Sending APRS message to {target_call}...")
             
@@ -439,7 +439,7 @@ class AprsManager:
             icon_id = icon_in[1]
             
         # APRS comment max is strictly 43 characters. We use '=' to indicate that this node supports incoming Messages!
-        aprs_pkt = f"{full_source}>APRS,TCPIP*:={lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\n"
+        aprs_pkt = f"{full_source}>APRS,TCPIP*:={lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\r\n"
         
         def bg_loc_send():
             success = inject_aprs_packet_and_wait_ack(
