@@ -29,10 +29,28 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         sock.settimeout(5)
         sock.connect(('rotate.aprs2.net', 14580))
         sock.send(f"user {callsign} pass {passcode} vers MeshUpGrade 0.2.0\n".encode('utf-8'))
-        time.sleep(1)
+        
+        # Give the server a moment and read the authentication response
+        login_resp = ""
+        try:
+            start_l = time.time()
+            while time.time() - start_l < 3:
+                login_resp += sock.recv(512).decode('utf-8', errors='ignore')
+                if "logresp" in login_resp.lower() or "not allowed" in login_resp.lower():
+                    break
+        except socket.timeout:
+            pass
+            
+        if "unverified" in login_resp.lower() or "not allowed" in login_resp.lower():
+            logging.error(f"APRS Login rejected: {login_resp.strip()}")
+            sock.close()
+            return False
+
         sock.send(packet_str.encode('utf-8'))
         
         if not wait_ack_id:
+            # Let the TCP stream flush before resetting the socket
+            time.sleep(1.0)
             sock.close()
             return True
             
