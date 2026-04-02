@@ -438,8 +438,10 @@ class AprsManager:
             icon_class = icon_in[0]
             icon_id = icon_in[1]
             
-        # APRS comment max is strictly 43 characters. We use '=' to indicate that this node supports incoming Messages!
-        aprs_pkt = f"{full_source}>APRS,TCPIP*:={lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\r\n"
+        t = time.gmtime()
+        time_str = f"{t.tm_mday:02d}{t.tm_hour:02d}{t.tm_min:02d}z"
+        # Use '@' for Timestamped Position WITH Messaging to force packet uniqueness and beat duplicate filters!
+        aprs_pkt = f"{full_source}>APRS,TCPIP*:@" + time_str + f"{lat_str}{icon_class}{lon_str}{icon_id}HAM licensed node. MeshUpGrade (Github!)\r\n"
         
         def bg_loc_send():
             success = inject_aprs_packet_and_wait_ack(
