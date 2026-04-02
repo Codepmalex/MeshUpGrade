@@ -57,18 +57,7 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         sock.send(packet_str.encode('utf-8'))
         
         if not wait_ack_id:
-            # Explicitly shutdown write tunnel so Android flush occurs cleanly
-            try:
-                sock.shutdown(socket.SHUT_WR)
-            except:
-                pass
-            # Read from the buffer until EOF or 3s timeout to ensure server ingested package
-            sock.settimeout(3.0)
-            try:
-                while sock.recv(1024):
-                    pass
-            except:
-                pass
+            time.sleep(3.0)
             sock.close()
             return True
             
