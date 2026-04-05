@@ -15,6 +15,7 @@ from bbs_manager import BbsManager
 from sms_contacts import SmsContactsManager
 from ai_chat import AiChatManager
 from aprs_manager import AprsManager
+from satellite import handle_sat_command
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -236,7 +237,7 @@ def main():
         
         # Help Menu handling
         if msg == "HELP":
-            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : Texting\nAPRS : APRS Tools\nAI : AI Chat\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
+            menu = "--Help Menu--\nWX : Weather\nBBS : Bulletin Board\nRMD : Reminders\nSMS : Texting\nAPRS : APRS Tools\nAI : AI Chat\nSAT : Satellite Tracker\nINBOX : Offline SMS\nSTATUS : Node Health\nUPTIME : Session Time"
             send_reply(sender, menu, channel_index)
             return
 
@@ -348,6 +349,13 @@ def main():
         if msg == "SMS":
             menu = "-SMS Menu-\n?<number> <msg>\n?<name> <msg>\n?L <msg> : Reply last\n?addcontact <name> <num>\n?delcontact <name>\n?contactlist"
             send_reply(sender, menu, channel_index)
+            return
+
+        # Satellite Tracker
+        if msg.startswith("SAT"):
+            home_lat = float(settings.get("lat", 0))
+            home_lon = float(settings.get("lon", 0))
+            handle_sat_command(msg, send_reply, sender, channel_index, home_lat, home_lon)
             return
 
         # SMS command handling

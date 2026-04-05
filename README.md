@@ -105,6 +105,15 @@ Send `APRS` to see the full submenu. Key commands:
 
 > **Note**: Incoming APRS messages addressed to your registered callsign are automatically intercepted by the background daemon and forwarded to your Meshtastic node as a DM. No extra configuration needed!
 
+### 🛰️ Satellite Tracker
+Send `SAT` to see the sub-menu. No account or API key needed!
+
+- `SAT ISS` : Live ISS position, altitude, speed and daylight status — updated in real time.
+- `SAT PASS` : Next predicted ISS pass window over your configured location (±10 min estimate via orbital model).
+- `SAT CREW` : Who is currently aboard the ISS.
+
+> The ISS also carries an amateur radio transceiver (NA1SS / RS0ISS) — ham operators can make contact during a pass!
+
 ## 🤝 Contributing
 
 This project is open to contributions and ideas. Please post any ideas for others to add [here](https://github.com/Codepmalex/MeshUpGrade/discussions/categories/ideas)!
