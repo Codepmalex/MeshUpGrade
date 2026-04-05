@@ -36,7 +36,6 @@ class AprsIsGateway:
     def save_routes(self):
         try:
             with open(ROUTES_FILE, 'w') as f:
-                json.dumps(self.routing_table) # test serialize
                 json.dump(self.routing_table, f, indent=4)
         except Exception as e:
             logging.error(f"Error saving {ROUTES_FILE}: {e}")
@@ -58,7 +57,7 @@ class AprsIsGateway:
             self.sock.connect((self.server, self.port))
             
             # Login string. Filter p/SMS means we only want packets FROM the 'SMS' callsign
-            login_str = f"user {self.callsign} pass {self.passcode} vers MeshUpGrade 0.2.0 filter p/SMS\n"
+            login_str = f"user {self.callsign} pass {self.passcode} vers MeshUpGrade 0.3.0 filter p/SMS\r\n"
             self.sock.send(login_str.encode("utf-8"))
             
             self.connected = True
@@ -114,7 +113,7 @@ class AprsIsGateway:
         # We can use a random 3-digit ID or just the last 3 digits of time.
         msg_id = str(int(time.time() * 10))[-3:]
         
-        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}" + "{" + msg_id + "\n"
+        aprs_packet = f"{self.callsign}>APRS,TCPIP*::{dest_padded}:@{clean_phone} {message}" + "{" + msg_id + "\r\n"
         
         try:
             self.sock.send(aprs_packet.encode("utf-8"))
@@ -195,7 +194,7 @@ class AprsIsGateway:
                     # Send ACK back to APRS-IS if it had an ID
                     if "{" in payload:
                         msg_id = payload.split("{")[1]
-                        ack_packet = f"{self.callsign}>APRS,TCPIP*::{'SMS'.ljust(9)}:ack{msg_id}\n"
+                        ack_packet = f"{self.callsign}>APRS,TCPIP*::{'SMS'.ljust(9)}:ack{msg_id}\r\n"
                         try:
                             self.sock.send(ack_packet.encode('utf-8'))
                         except:

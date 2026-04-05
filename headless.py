@@ -301,12 +301,13 @@ def main():
                 send_reply(sender, "AI chat history cleared!", channel_index)
                 return
             response = ai_mgr.chat(sender, ai_body)
-            if len(response) <= 200:
-                send_reply(sender, response, channel_index)
-            else:
-                send_reply(sender, response[:200], channel_index)
-                time.sleep(5)
-                send_reply(sender, response[200:400], channel_index)
+            # Send up to 2 chunks of 190 chars each (190 not 200 for safety margin)
+            chunk1 = response[:190]
+            send_reply(sender, chunk1, channel_index)
+            if len(response) > 190:
+                time.sleep(4)
+                chunk2 = response[190:380]
+                send_reply(sender, chunk2, channel_index)
             return
 
         # Weather handling
@@ -444,7 +445,11 @@ def main():
                 aprs_mgr.process_mesh_position(sender, None, None)
             
             if portnum == 'TEXT_MESSAGE_APP':
-                msg = packet['decoded']['payload'].decode('utf-8').strip()
+                try:
+                    msg = packet['decoded']['payload'].decode('utf-8').strip()
+                except (UnicodeDecodeError, AttributeError) as e:
+                    logging.warning(f"Could not decode message payload from {sender}: {e}")
+                    return
                 if packet.get('toId') != '^all':
                     logging.info(f"DM from {sender}: {msg}")
                     process_command(msg, sender, packet)
@@ -477,11 +482,15 @@ def main():
             aid = alert['id']
             if aid not in last_alert_ids:
                 last_alert_ids.add(aid)
-                # Meshtastic Alert Bell \a
-                msg = f"\a⚠️ WX ALERT: {alert['event']} - {alert['severity']}\n{alert['headline']}"
+                event   = (alert['event'] or 'Alert')[:35]
+                sev     = (alert['severity'] or '')[:12]
+                headline = (alert['headline'] or '')[:80]
+                # \a = Meshtastic alert bell
+                msg = f"\a WX ALERT: {event} ({sev})\n{headline}"
+                if len(msg) > 190:
+                    msg = msg[:187] + "..."
                 logging.info(f"Broadcasting Alert: {alert['event']}")
                 engine.send_broadcast(msg, channel_index=alert_channel)
-                # 7-second cooldown between multiple alerts to prevent packet loss
                 time.sleep(7)
         
         threading.Timer(600, check_alerts).start()

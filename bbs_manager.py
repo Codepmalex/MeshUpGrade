@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import re
+import threading
 from datetime import datetime
 
 class BbsManager:
@@ -182,14 +183,18 @@ class BbsManager:
             self.save_store()
             
             self.send_reply(sender, f"Posted to {group.upper()}! (Expires in {exp_hrs}h)", channel_index)
-            
-            # Notify subscribers via DM with 15s stagger to avoid mesh collisions
-            notification_str = f"📢 BBS UPDATE in {group.upper()}:\n'{msg_body}' -{sender_name}"
-                
-            for sub in self.store["subscriptions"][group]:
-                if sub != sender: # Don't notify the person who just sent it!
-                    time.sleep(15)
-                    self.engine.send_dm(sub, notification_str)
+
+            # Notify subscribers — run in background thread so we don't block the message handler
+            notification_str = f"BBS {group.upper()}: '{msg_body[:80]}' -{sender_name}"
+            subscribers = list(self.store["subscriptions"][group])  # snapshot
+
+            def _notify(subs, notif):
+                for sub in subs:
+                    if sub != sender:
+                        time.sleep(5)  # 5s stagger is enough; no need for 15s
+                        self.engine.send_dm(sub, notif)
+
+            threading.Thread(target=_notify, args=(subscribers, notification_str), daemon=True).start()
 
         if cmd == "BBSADDGROUP":
             if len(parts) < 2:

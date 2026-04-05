@@ -8,18 +8,12 @@ import http.client
 import json
 import logging
 import math
+import threading
 import time
 import urllib.parse
 
 
-# Satellite IDs on wheretheiss.at
-SAT_CATALOG = {
-    "ISS":  25544,
-    "TSS":  25544,  # alias: The Space Station
-}
-
-WHICHSAT_HOST  = "api.wheretheiss.at"
-OPENNOTIFY_HOST = "api.open-notify.org"
+WHICHSAT_HOST = "api.wheretheiss.at"
 
 
 def _http_get_json(host, path, timeout=8):
@@ -202,7 +196,6 @@ def handle_sat_command(msg_upper, send_reply_fn, sender, channel_index, home_lat
 
     if sub == "ISS":
         send_reply_fn(sender, "Fetching ISS position...", channel_index)
-        import threading
         def _fetch():
             result = get_iss_position()
             send_reply_fn(sender, result, channel_index)
@@ -211,20 +204,18 @@ def handle_sat_command(msg_upper, send_reply_fn, sender, channel_index, home_lat
 
     if sub == "PASS":
         send_reply_fn(sender, "Calculating next pass...", channel_index)
-        import threading
-        def _fetch():
+        def _fetch_pass():
             result = get_next_pass(home_lat, home_lon, n=2)
             send_reply_fn(sender, result, channel_index)
-        threading.Thread(target=_fetch, daemon=True).start()
+        threading.Thread(target=_fetch_pass, daemon=True).start()
         return True
 
     if sub == "CREW":
         send_reply_fn(sender, "Fetching ISS crew...", channel_index)
-        import threading
-        def _fetch():
+        def _fetch_crew():
             result = get_iss_crew()
             send_reply_fn(sender, result, channel_index)
-        threading.Thread(target=_fetch, daemon=True).start()
+        threading.Thread(target=_fetch_crew, daemon=True).start()
         return True
 
     # Unknown sub-command

@@ -18,7 +18,6 @@ except ImportError:
 
 import meshtastic
 import meshtastic.tcp_interface
-import logging
 try:
     import meshtastic.serial_interface
     SERIAL_AVAILABLE = True

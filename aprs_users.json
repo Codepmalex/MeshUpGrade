@@ -1,0 +1,10 @@
+{
+    "!d297aa16": {
+        "callsign": "KE2BPN",
+        "passcode": "23211",
+        "suffix": "5",
+        "icon": "b",
+        "enabled": true,
+        "auto_location": false
+    }
+}

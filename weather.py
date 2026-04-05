@@ -37,7 +37,7 @@ class WeatherPlugin:
     def format_wx1(self):
         data = self.get_weather_data()
         if not data: return "Error fetching weather."
-        
+
         daily = data['daily']
         lines = []
         for i in range(5):
@@ -45,10 +45,14 @@ class WeatherPlugin:
             day_name = date_obj.strftime("%a").upper()
             hi = int(daily['temperature_2m_max'][i])
             lo = int(daily['temperature_2m_min'][i])
-            cond = self.WMO_CODES.get(daily['weathercode'][i], "Cloudy")
-            lines.append(f"{day_name}:{hi}/{lo}{self.unit} {cond}")
-        
-        return " | ".join(lines)
+            cond = self.WMO_CODES.get(daily['weathercode'][i], "Cldy")
+            lines.append(f"{day_name}:{hi}/{lo}{'°' + self.unit} {cond}")
+
+        # Join with | separator and confirm it fits
+        result = " | ".join(lines)
+        if len(result) > 190:
+            result = "\n".join(lines)  # fallback: newline-separated is more compact
+        return result
 
     def format_wx2(self):
         data = self.get_weather_data()
@@ -128,11 +132,17 @@ class WeatherPlugin:
         alerts = self.get_alerts()
         if not alerts:
             return "No active weather alerts for your area."
-        
+
         lines = ["--Active WX Alerts--"]
         for alert in alerts:
-            lines.append(f"⚠️ {alert['event']} ({alert['severity']})")
-        return "\n".join(lines)
+            event = (alert['event'] or 'Unknown')[:30]
+            sev   = (alert['severity'] or '?')[:10]
+            lines.append(f"{event} ({sev})")
+
+        result = "\n".join(lines)
+        if len(result) > 190:
+            result = result[:187] + "..."
+        return result
 
     def get_alerts(self):
         # NWS API requires a User-Agent

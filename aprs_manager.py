@@ -35,7 +35,7 @@ def inject_aprs_packet_and_wait_ack(callsign, passcode, packet_str, wait_ack_id=
         if "-" not in login_call:
             login_call += "-13"
 
-        payload = f"user {login_call} pass {passcode} vers MeshUpGrade 0.2.0\r\n{packet_str}"
+        payload = f"user {login_call} pass {passcode} vers MeshUpGrade 0.3.0\r\n{packet_str}"
         body = payload.encode('utf-8')
         headers = {
             'Content-Type': 'application/octet-stream',
@@ -83,10 +83,15 @@ class AprsManager:
                 logging.error(f"Error loading {APRS_USERS_FILE}: {e}")
         return {}
         
-    def _save_users(self):
-        with open(APRS_USERS_FILE, 'w') as f:
-            json.dump(self.users, f, indent=4)
-        self.bounce_sock = True
+    def _save_users(self, bounce=False):
+        """Persist users to disk. Set bounce=True to force the RX daemon to reconnect (e.g. after toggling APRS on/off)."""
+        try:
+            with open(APRS_USERS_FILE, 'w') as f:
+                json.dump(self.users, f, indent=4)
+        except Exception as e:
+            logging.error(f"Error saving {APRS_USERS_FILE}: {e}")
+        if bounce:
+            self.bounce_sock = True
 
     def start_rx_daemon(self, host_call, host_pass):
         self.host_call = host_call
@@ -319,14 +324,14 @@ class AprsManager:
                 self.send_reply(sender, "You must complete APRS SETUP first!")
                 return True
             self.users[sender]['enabled'] = True
-            self._save_users()
+            self._save_users(bounce=True)
             self.send_reply(sender, "APRS is now ON.")
             return True
             
         if cmd == "APRS OFF":
             if sender in self.users:
                 self.users[sender]['enabled'] = False
-                self._save_users()
+                self._save_users(bounce=True)
             self.send_reply(sender, "APRS is now OFF.")
             return True
             
