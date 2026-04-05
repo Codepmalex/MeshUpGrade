@@ -1,6 +1,6 @@
 # MeshUpGrade v0.3.0
 
-MeshUpGrade is a massive utility-focused autonomous information node for Meshtastic networks. It turns your node into an information-on-demand server, allowing other users on the mesh to query automated services like weather forecasts, active NWS alerts, local Bulletin Boards (BBS), cron-job reminders, and even a two-way SMS-to-Cellular gateway via APRS-IS.
+MeshUpGrade is a massive utility-focused autonomous information node for Meshtastic networks. It turns your node into an information-on-demand server, allowing other users on the mesh to query automated services like weather forecasts, active NWS alerts, local Bulletin Boards (BBS), cron-job reminders, a two-way SMS-to-Cellular gateway via APRS-IS, and a full **two-way APRS bridge** for licensed ham operators.
 
 ## ✨ Core Purpose
 The primary goal of MeshUpGrade is mesh utility. It runs as a background service on your PC/Mac/Linux machine or natively headless via Termux on Android. Once connected to a Meshtastic node, it responds to mesh queries entirely without human intervention!
@@ -9,6 +9,11 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
 
 - 🤖 **Autonomous Info Node**: Responds to DMs and channel broadcasts with useful system data, signal metrics, and utilities.
 - 📱 **APRS-IS SMS Gateway**: Seamlessly route two-way text messages between standard cell phones and off-grid Mesh users! Features an intelligent SMS memory cache (`?L` quick-reply) and an offline spooling `INBOX`.
+- 📡 **Full Two-Way APRS Bridge** *(Ham License Required)*:
+  - Send **APRS messages** to any station on the global APRS-IS network.
+  - **Receive APRS messages** from other stations, automatically forwarded to your Meshtastic node as a DM.
+  - Share your **live GPS location** to `aprs.fi` on demand or automatically mirror every beacon.
+  - **Lookup any station** on `aprs.fi` in real-time with `APRS FIND` — see position, speed, altitude, and last-heard time.
 - 📌 **Local Bulletin Board System (BBS)**: Host localized textual boards with dynamic user subscriptions (`BBS SUB`) and auto-expiring messages (`BBSTX`).
 - ⏰ **Background Cron Reminders**: Schedule localized future alerts and string deliveries via the `RMD` scheduler.
 - 🌦️ **Weather Integration**: 
@@ -23,6 +28,7 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
 
 - Python 3.9 or higher
 - A Meshtastic node with WiFi/TCP or Serial connectivity.
+- A valid **Ham Radio License** and APRS passcode to use APRS features.
 
 ### Installation
 
@@ -55,8 +61,8 @@ The primary goal of MeshUpGrade is mesh utility. It runs as a background service
    ```
 2. **Connect**: Input your node's IP or Serial port and click **Connect**.
 3. **Configure**:
-   - Set up your HAM Callsign and APRS Passcode in the "SMS & APRS" tab to unlock cell-phone texting!
-   - Configure local BBS boards and expiration limits under the "BBS" tab.
+   - Set up your HAM Callsign and APRS Passcode in the \"SMS & APRS\" tab to unlock cell-phone texting!
+   - Configure local BBS boards and expiration limits under the \"BBS\" tab.
 
 ## 📟 Mesh Commands
 
@@ -64,7 +70,7 @@ Users can DM your node (or broadcast on the Command Channel) the following case-
 
 ### Core System
 - `HELP`: Displays the global system overview menu.
-- `STATUS`: Returns a simple "Node is healthy." ping.
+- `STATUS`: Returns a simple \"Node is healthy.\" ping.
 - `UPTIME`: Displays exactly how long the python background server has been actively routing on the network.
 - `INBOX`: Fetches and manually flushes any pending messages stored in the node's offline SMS inbox.
 
@@ -75,17 +81,29 @@ Users can DM your node (or broadcast on the Command Channel) the following case-
 
 ### Bulletin Board System (BBS)
 - `BBS`: Triggers the dynamic group-list and syntax menu.
-- `BBSRX <group> [pX]`: Retrieves paginated messages from a targeted board (e.g. `BBSRX group1 p2`).
-- `BBSTX <group> [exp<hours>] <msg>`: Posts a customized message directly onto a targeted board (e.g. `BBSTX group1 exp2 I'll be at the park!`). Messages vanish entirely at expiration.
-- `BBS SUB <group>`: Subscribes your user ID directly to the specified group, allowing you to intercept delivery notifications anytime a user posts a message. 
+- `BBSRX <group> [pX]`: Retrieves paginated messages from a targeted board (e.g. `BBSRX group1 p2`)
+- `BBSTX <group> [exp<hours>] <msg>`: Posts a customized message directly onto a targeted board. Messages vanish at expiration.
+- `BBS SUB <group>`: Subscribes your user ID to the specified group for delivery notifications.
 
 ### Local Cron Timers
 - `RMD` / `REMIND`: Displays cron-job syntax helper menu.
-- `RMD HH:MM [YYYY-MM-DD] <msg>`: Schedules a background chron-job that sweeps JSON every 60 seconds and pings you the appended text exactly at that scheduled time.
+- `RMD HH:MM [YYYY-MM-DD] <msg>`: Schedules a background chron-job that pings you the text at the scheduled time.
 
 ### SMS Gateway (APRS-IS)
-- `?<phonenumber> <msg>`: Binds an active session directly to standard cellular networks and transmits your packet over APRS (e.g. `?15551234567 Hello There!`).
-- `?L <msg>`: Utilizes the automatic memory cache to instantly fire a text message back to the absolute last 10-digit cellphone number engaged with your node ID (memory cache expires intelligently after 30 minutes).
+- `?<phonenumber> <msg>`: Routes a text message to a standard cell phone via APRS-IS (e.g. `?15551234567 Hello There!`).
+- `?L <msg>`: Quick-replies to the last number engaged with your node (memory expires after 30 mins).
+
+### 📡 APRS Gateway *(Ham License Required)*
+Send `APRS` to see the full submenu. Key commands:
+
+- `APRS SETUP`: Interactive wizard to link your APRS passcode, SSID suffix, and map icon.
+- `APRS ON` / `APRS OFF`: Enable or disable your APRS profile.
+- `APRS <callsign> <msg>`: Send a direct APRS message to any station globally (e.g. `APRS W1AW-9 Hello from Mesh!`).
+- `APRS LOCATION`: Immediately publish your current GPS position to `aprs.fi`.
+- `APRS AUTO LOCATION ON/OFF`: Automatically mirror every GPS beacon from your Meshtastic node to `aprs.fi`.
+- `APRS FIND <callsign>`: 🔍 **Look up any ham station on `aprs.fi`** and get their last-known position, speed, altitude, and status comment delivered directly to your radio (e.g. `APRS FIND W1AW`).
+
+> **Note**: Incoming APRS messages addressed to your registered callsign are automatically intercepted by the background daemon and forwarded to your Meshtastic node as a DM. No extra configuration needed!
 
 ## 🤝 Contributing
 
@@ -94,3 +112,4 @@ This project is open to contributions and ideas. Please post any ideas for other
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

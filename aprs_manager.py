@@ -97,28 +97,38 @@ class AprsManager:
 
     def _rx_loop(self):
         while self.rx_running:
-            enabled_users = [f"{v['callsign']}-{v['suffix']}" for v in self.users.values() if v.get('enabled')]
+            enabled_users = {}
+            for node_id, v in self.users.items():
+                if v.get('enabled'):
+                    call_with_ssid = f"{v['callsign']}-{v['suffix']}"
+                    enabled_users[call_with_ssid.upper()] = node_id
+
             if not enabled_users:
                 time.sleep(10)
                 continue
-                
+
             rx_sock = None
             try:
                 rx_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 rx_sock.settimeout(30)
                 rx_sock.connect(('rotate.aprs2.net', 14580))
-                b_filters = " ".join([f"b/{c}" for c in enabled_users])
-                
+
                 login_call = self.host_call
                 if "-" not in login_call:
                     login_call += "-15"
-                    
-                login = f"user {login_call} pass {self.host_pass} vers MeshUpGrade 0.2.0 filter {b_filters}\n"
+
+                # Use message filter 'm/' which specifically delivers messages addressed to our registered callsigns
+                # Also add buddy filter 'b/' to additionally receive position updates from those callsigns
+                base_calls = list(set(v['callsign'] for v in self.users.values() if v.get('enabled')))
+                filter_str = "m/" + "/".join(base_calls)
+
+                login = f"user {login_call} pass {self.host_pass} vers MeshUpGrade 0.2.0 filter {filter_str}\r\n"
                 rx_sock.send(login.encode('utf-8'))
-                
+                logging.info(f"APRS RX daemon connected. Filter: {filter_str}")
+
                 last_rx = time.time()
                 buf = ""
-                
+
                 self.bounce_sock = False
                 while self.rx_running and not self.bounce_sock:
                     try:
@@ -128,64 +138,65 @@ class AprsManager:
                         buf += data
                         while '\n' in buf:
                             line, buf = buf.split('\n', 1)
-                            self._parse_rx(line.strip())
+                            self._parse_rx(line.strip(), enabled_users)
                     except socket.timeout:
                         if time.time() - last_rx > 120:
                             break
-                        try: rx_sock.send(b"#keepalive\n")
+                        try: rx_sock.send(b"#keepalive\r\n")
                         except: break
             except Exception as e:
                 logging.error(f"APRS RX Loop Error: {e}")
-                
+
             if rx_sock:
                 try: rx_sock.close()
                 except: pass
             time.sleep(5)
 
-    def _parse_rx(self, line):
+    def _parse_rx(self, line, enabled_users):
+        """Parse an incoming APRS-IS line. enabled_users is a dict of {CALLSIGN-SSID: node_id}"""
         if line.startswith("#"): return
-        
-        # Format: N0CALL-1>APRS,TCPIP*::KD9XYZ-9 :Hello world!{123
+
+        # APRS message format: SRC>DEST,PATH::DEST_PADDED:payload{msgid
         if "::" not in line: return
         try:
             head, tail = line.split("::", 1)
-            # Find destination call (9 chars padded)
-            dest_call = tail[:9].strip()
-            payload = tail[10:]
-            
-            target_node_id = None
-            for node_id, prof in self.users.items():
-                if prof.get('enabled') and f"{prof['callsign']}-{prof['suffix']}" == dest_call:
-                    target_node_id = node_id
-                    break
-                    
+            # Dest is 9-char padded field before the colon
+            colon_idx = tail.index(":")
+            dest_call = tail[:colon_idx].strip().upper()  # strip padding
+            payload = tail[colon_idx + 1:]
+
+            target_node_id = enabled_users.get(dest_call)
+
             if target_node_id:
                 src_call = head.split(">")[0]
-                
+
                 if payload.lower().startswith("ack") or payload.lower().startswith("rej"):
                     return
-                    
+
                 msg_body = payload
                 msg_id = None
                 if "{" in payload:
                     msg_body_parts = payload.split("{", 1)
-                    msg_body = msg_body_parts[0]
+                    msg_body = msg_body_parts[0].strip()
                     if len(msg_body_parts) > 1:
-                        msg_id = msg_body_parts[1]
-                    
-                logging.info(f"APRS RX match for {target_node_id}: {msg_body}")
+                        msg_id = msg_body_parts[1].strip()
+
+                logging.info(f"APRS RX match for {target_node_id} ({dest_call}): {msg_body}")
                 self.send_reply(target_node_id, f"APRS from {src_call}: {msg_body}")
-                
+
                 if msg_id:
-                    ack_pkt = f"{dest_call}>APRS,TCPIP*::{src_call.ljust(9)}:ack{msg_id}\n"
                     prof = self.users[target_node_id]
+                    full_dest = f"{prof['callsign']}-{prof['suffix']}"
+                    ack_pkt = f"{full_dest}>APRS,TCPIP*::{src_call.ljust(9)}:ack{msg_id}\r\n"
                     threading.Thread(
-                        target=inject_aprs_packet_and_wait_ack, 
+                        target=inject_aprs_packet_and_wait_ack,
                         args=(prof['callsign'], prof['passcode'], ack_pkt),
                         daemon=True
                     ).start()
+            else:
+                logging.debug(f"APRS RX: ignored line for {tail[:9].strip()} (not in enabled_users)")
         except Exception as e:
-            logging.error(f"APRS Parse Error: {e}")
+            logging.error(f"APRS Parse Error: {e} | line={line!r}")
 
     def _get_callsign_from_longname(self, sender):
         """Extract a ham callsign from a node's longName if present."""
@@ -282,12 +293,13 @@ class AprsManager:
         
         if cmd == "APRS":
             msg = (
-                "🌐 APRS Gateway Menu:\n\n"
+                "\U0001f310 APRS Gateway Menu:\n\n"
                 "APRS SETUP : Link your passcode and icon.\n"
                 "APRS ON/OFF : Toggle APRS.\n"
                 "APRS <callsign> <msg> : Send a text.\n"
                 "APRS LOCATION : Share current location.\n"
-                "APRS AUTO LOCATION ON/OFF : Auto-track.\n\n"
+                "APRS AUTO LOCATION ON/OFF : Auto-track.\n"
+                "APRS FIND <callsign> : Look up anyone on aprs.fi.\n\n"
                 "Note: A valid Ham Callsign must be in your node's LongName!"
             )
             self.send_reply(sender, msg)
@@ -336,6 +348,16 @@ class AprsManager:
             
         if cmd == "APRS LOCATION":
             self._send_location(sender, manual=True)
+            return True
+
+        # APRS FIND: look up any ham station on aprs.fi
+        if len(parts) >= 3 and parts[1].upper() == "FIND":
+            target = parts[2].upper()
+            self.send_reply(sender, f"Looking up {target} on aprs.fi...")
+            def bg_find():
+                result = self._aprs_find(target)
+                self.send_reply(sender, result)
+            threading.Thread(target=bg_find, daemon=True).start()
             return True
 
         # Handle APRS Message Send
@@ -460,3 +482,59 @@ class AprsManager:
             # we respect the user's "mirror every single packet" request exactly.
             logging.info(f"Auto-mirroring position for {sender} to APRS-IS.")
             self._send_location(sender, manual=False)
+
+    def _aprs_find(self, callsign):
+        """Query aprs.fi for the last-known position and info of any station. Returns a formatted string."""
+        import http.client, urllib.parse
+        try:
+            # Strip SSID for base lookup — aprs.fi returns all SSIDs of the station
+            base_call = callsign.split("-")[0]
+            path = f"/api/get?name={urllib.parse.quote(base_call)}&what=loc&apikey=163567.qPHfzJrAp7mMxn&format=json"
+            conn = http.client.HTTPConnection("api.aprs.fi", 80, timeout=8)
+            conn.request("GET", path, headers={"User-Agent": "MeshUpGrade/0.3"})
+            resp = conn.getresponse()
+            raw = resp.read().decode("utf-8", errors="ignore")
+            conn.close()
+
+            import json as _json
+            data = _json.loads(raw)
+
+            if data.get("result") != "ok" or not data.get("entries"):
+                return f"No APRS data found for {callsign}. They may not be active."
+
+            e = data["entries"][0]
+            name = e.get("name", callsign)
+            lat = float(e.get("lat", 0))
+            lon = float(e.get("lng", 0))
+            course = e.get("course", "")
+            speed = e.get("speed", "")
+            alt = e.get("altitude", "")
+            comment = e.get("comment", "").strip()
+            last_time = int(e.get("time", 0))
+
+            # Human-readable time since last seen
+            age_s = int(time.time()) - last_time
+            if age_s < 60:
+                age_str = f"{age_s}s ago"
+            elif age_s < 3600:
+                age_str = f"{age_s // 60}m ago"
+            elif age_s < 86400:
+                age_str = f"{age_s // 3600}h ago"
+            else:
+                age_str = f"{age_s // 86400}d ago"
+
+            lines = [f"📡 {name} ({age_str})"]
+            lines.append(f"📍 {lat:.4f}, {lon:.4f}")
+            if speed:
+                lines.append(f"🚗 {speed} km/h  🧭 {course}°")
+            if alt:
+                lines.append(f"⬆ {float(alt):.0f} m alt")
+            if comment:
+                lines.append(f"💬 {comment}")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            logging.error(f"APRS FIND error: {e}")
+            return f"Error looking up {callsign}: {e}"
+
