@@ -1,0 +1,5 @@
+meshcore
+aiohttp
+requests
+pypubsub
+# standard library-like modules
