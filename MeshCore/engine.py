@@ -18,11 +18,16 @@ class MeshEngine:
         try:
             logging.info(f"Connecting to MeshCore node at {host}:{port}...")
             self.client = await MeshCore.create_tcp(host, port)
-            self.client.on_event(self._on_event)
+            
+            # Subscribe to the specific events we need
+            self.client.subscribe(EventType.CONTACT_MSG_RECV, self._on_event)
+            self.client.subscribe(EventType.CHANNEL_MSG_RECV, self._on_event)
+            self.client.subscribe(EventType.DEVICE_INFO, self._on_event)
+            
             self.is_connected = True
             
             # Fetch basic info
-            result = await self.client.commands.get_status()
+            result = await self.client.commands.req_status()
             if result.type != EventType.ERROR:
                 self.node_info = result.payload
                 logging.info(f"Connected to MeshCore node: {self.node_info}")
@@ -38,7 +43,9 @@ class MeshEngine:
         try:
             logging.info(f"Connecting to MeshCore node at {port}...")
             self.client = await MeshCore.create_serial(port)
-            self.client.on_event(self._on_event)
+            self.client.subscribe(EventType.CONTACT_MSG_RECV, self._on_event)
+            self.client.subscribe(EventType.CHANNEL_MSG_RECV, self._on_event)
+            self.client.subscribe(EventType.DEVICE_INFO, self._on_event)
             self.is_connected = True
             return True
         except Exception as e:
@@ -74,27 +81,26 @@ class MeshEngine:
         """Send a broadcast message (to the Public channel)."""
         return await self.send_dm("public", message)
 
-    def _on_event(self, event):
+    async def _on_event(self, event):
         """MeshCore event handler (converts MeshCore events to internal pubsub/callbacks)."""
-        if event.type == EventType.MESSAGE_RECEIVED:
-            # event.payload is expected to be a dict with 'sender' and 'text'
-            # We normalize this for our application logic
+        if event.type in (EventType.CONTACT_MSG_RECV, EventType.CHANNEL_MSG_RECV):
+            # event.payload is expected to be a dict with 'sender_pk' and 'text'
+            is_public = (event.type == EventType.CHANNEL_MSG_RECV)
             packet = {
                 'fromId': event.payload.get('sender_pk', 'unknown'),
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': event.payload.get('text', '').encode('utf-8')
                 },
-                'toId': '^all' if event.payload.get('is_public') else 'me'
+                'toId': '^all' if is_public else 'me'
             }
             
             if self.callback_on_message:
-                # We need to run the callback, but remember it might be sync or async
-                # For simplicity, we trigger the callback in the current loop
                 asyncio.create_task(self.invoke_callback(packet))
                 
-        elif event.type == EventType.NODE_INFO:
-            logging.info(f"Node info received: {event.payload}")
+        elif event.type == EventType.DEVICE_INFO:
+            logging.info(f"Device info received: {event.payload}")
+            self.node_info = event.payload
 
     async def invoke_callback(self, packet):
         if self.callback_on_message:
