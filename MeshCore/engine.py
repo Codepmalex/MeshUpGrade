@@ -23,15 +23,9 @@ class MeshEngine:
             self.client.subscribe(EventType.CONTACT_MSG_RECV, self._on_event)
             self.client.subscribe(EventType.CHANNEL_MSG_RECV, self._on_event)
             self.client.subscribe(EventType.DEVICE_INFO, self._on_event)
+            self.client.subscribe(EventType.SELF_INFO, self._on_event)
             
             self.is_connected = True
-            
-            # Fetch basic info
-            result = await self.client.commands.req_status()
-            if result.type != EventType.ERROR:
-                self.node_info = result.payload
-                logging.info(f"Connected to MeshCore node: {self.node_info}")
-            
             return True
         except Exception as e:
             logging.error(f"MeshCore TCP connection failed: {e}")
@@ -100,7 +94,12 @@ class MeshEngine:
                 
         elif event.type == EventType.DEVICE_INFO:
             logging.info(f"Device info received: {event.payload}")
-            self.node_info = event.payload
+            self.node_info.update(event.payload)
+            
+        elif event.type == EventType.SELF_INFO:
+            logging.info(f"Self info received (Node ID): {event.payload}")
+            self.node_info.update(event.payload)
+            self.node_id = event.payload.get('pk')
 
     async def invoke_callback(self, packet):
         if self.callback_on_message:
