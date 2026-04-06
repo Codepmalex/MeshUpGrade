@@ -227,7 +227,8 @@ def main():
     sms_contacts_mgr = SmsContactsManager()
     ai_mgr = AiChatManager(settings)
     aprs_mgr = AprsManager(engine, send_reply)
-    aprs_mgr.start_rx_daemon(settings.get("callsign", "NOCALL"), settings.get("passcode", "-1"))
+    # Disabled generic APRS RX loop to prevent duplicate-login conflicts with SMS Gateway priority
+    # aprs_mgr.start_rx_daemon(settings.get("callsign", "NOCALL"), settings.get("passcode", "-1"))
 
     START_TIME = time.time()
     

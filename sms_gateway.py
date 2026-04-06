@@ -56,8 +56,8 @@ class AprsIsGateway:
             self.sock.settimeout(10)
             self.sock.connect((self.server, self.port))
             
-            # Login string. Filter p/SMS means we only want packets FROM the 'SMS' callsign
-            login_str = f"user {self.callsign} pass {self.passcode} vers MeshUpGrade 0.3.0 filter p/SMS\r\n"
+            # Login string. Filter m/{callsign} ensures we get all messages explicitly addressed to us, preventing firehose throttling.
+            login_str = f"user {self.callsign} pass {self.passcode} vers MeshUpGrade 0.4.0 filter m/{self.callsign}\r\n"
             self.sock.send(login_str.encode("utf-8"))
             
             self.connected = True
@@ -168,18 +168,18 @@ class AprsIsGateway:
         # Log ALL incoming APRS traffic for debugging
         logging.debug(f"APRS-IS RX: {line}")
             
-        # Look for messages TO us: anything containing ::OURCALL  :@
-        callsign_field = f":{self.callsign.ljust(9)}:@"
+        # Look for messages TO us: anything containing ::OURCALL  :
+        callsign_field = f":{self.callsign.ljust(9)}:"
         if callsign_field not in line:
             return
         
         try:
             # Extract the payload after the addressee
-            payload = line.split(f":{self.callsign.ljust(9)}:", 1)[1]
+            payload = line.split(callsign_field, 1)[1]
             
-            # Payload format is @1234567890 Message body{ID
-            if payload.startswith("@"):
-                # Split at first space to separate number and message
+            # Payload format from SMSGTE is usually @1234567890 Message body{ID or #alias Message body{ID
+            if payload.startswith("@") or payload.startswith("#"):
+                # Split at first space to separate number/alias and message
                 parts = payload[1:].split(" ", 1)
                 if len(parts) == 2:
                     reply_phone = parts[0]
